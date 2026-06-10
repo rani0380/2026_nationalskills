@@ -1,0 +1,44 @@
+안녕하세요. 1,2과제 질의 답변 드립니다.
+1과제 수정 사항
+1. 채점 스크립트 내 CloudFront Distribution ID 및 Bucket Name 하드코딩 문제 → 스크립트를 수정하였습니다.
+
+2. 4-5번 채점 스크립트 재실행 시 AlreadyExists 오류 발생 → Pod 삭제 단계를 추가하였습니다.
+
+3. 과제지 14번 Access Deined 오탈자 → 수정하였습니다.
+
+4. Addon/App NodeGroup 노드 수 기준 불일치 → 과제지를 "2개의 노드"로 수정하였습니다.
+
+5. marking.sh / mark.sh 파일명 불일치 → mark.sh로 수정하였습니다.
+
+6. 과제지 번호 표기 오류(5번 누락) → 수정하였습니다.
+
+7. WordSkills 표기 오류 → WorldSkills로 수정하였습니다.
+
+8. Software Stacks의 R53 사용 여부 → 수험자에 따라 사용할 수 있는 스택으로 포함하였습니다.
+
+9. Reference 문서 연도 표기 불일치(Seoul2025 / Seoul2026) → Seoul2025로 수정하였습니다.
+
+10. CloudFront VPC Origin 관련 문의 → 과제지에 명시된 내용대로 구성해 주시기 바랍니다.
+
+11. App NodeGroup 인스턴스 타입(m5.xlarge) 적정성 문의 → m5.large로 수정하였습니다.
+
+12. CloudWatch 오탈자(Cloudwatdh) → 수정하였습니다.
+
+13. WAF 적용 범위 관련 문의 → WAF Scope는 수험자가 직접 구성하는 항목입니다.
+
+14. client_id=C#001 사용 시 URL Fragment 문제 → C^001로 변경하였습니다.
+
+15. CloudFront Cache Hit/Miss 채점 기준 관련 문의 → 문제 해결 방식은 수험자가 직접 구성하시면 됩니다.
+
+16. Pull-Through Cache Prefix 명시 부족 → 의도된 문제 요소이며 선수 유의사항 8번을 참고해 주시기 바랍니다.
+
+17. CloudFront Invalidation 및 Grafana 반영 대기 시간 문의 → 대기 시간을 명시하였습니다.
+---
+2과제 수정 사항
+1. 채점기준표 3-8 세부 채점 내용이 잘못 기재된 것이 맞습니다. SNS 이메일 수신이 아닌 CloudWatch 로그 확인 방식으로 채점 내용을 수정하였습니다.
+
+2. 과제지 로그 포맷 샘플에 event_time 필드가 누락된 것이 맞습니다. 해당 필드를 포함하여 로그 포맷 샘플을 수정하였습니다.
+
+3. 문제지에 sink 테이블의 컬럼명 및 타입이 명시되어 있으므로, 동일한 AWS Managed Flink 환경에서 해당 타입으로 구성할 경우 직렬화 형식은 동일하게 출력됩니다. 제시된 예상 출력값은 해당 환경에서 검증된 값입니다.
+
+4. offset 0의 첫 번째 레코드는 윈도우 발화 순서에 따라 결정되며, 동일한 데이터와 쿼리를 사용할 경우 항상 동일한 레코드가 출력되는 것을 반복 테스트를 통해 검증하였습니다. 따라서 현재 채점 기준에 이상이 없습니다.
