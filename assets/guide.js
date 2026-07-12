@@ -14,6 +14,11 @@ const docs = {
     description: "선별 과제의 채점 스크립트 기준 구성 순서, 핵심 명령, 검증 포인트를 정리한 문서입니다.",
     file: "상세풀이집.md",
   },
+  task02first: {
+    title: "02_1과제_1등 상세 풀이",
+    description: "select/1과제/02_1과제_1등 문제를 채점 스크립트 기준으로 더 자세히 풀어쓴 절차형 문서입니다.",
+    file: "02_1과제_1등_상세풀이.md",
+  },
 };
 
 const params = new URLSearchParams(window.location.search);
