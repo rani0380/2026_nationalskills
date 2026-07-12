@@ -9,6 +9,11 @@ const docs = {
     description: "AWS 서비스와 Kubernetes 운영 개념을 시험 요구사항 중심으로 설명한 문서입니다.",
     file: "이론설명서.md",
   },
+  detailed: {
+    title: "1과제·2과제 상세 풀이집",
+    description: "선별 과제의 채점 스크립트 기준 구성 순서, 핵심 명령, 검증 포인트를 정리한 문서입니다.",
+    file: "상세풀이집.md",
+  },
 };
 
 const params = new URLSearchParams(window.location.search);
