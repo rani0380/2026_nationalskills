@@ -19,6 +19,11 @@ const docs = {
     description: "select/1과제/02_1과제_1등 문제를 채점 스크립트 기준으로 더 자세히 풀어쓴 절차형 문서입니다.",
     file: "02_1과제_1등_상세풀이.md",
   },
+  task02second: {
+    title: "02_2과제_1등 상세 풀이",
+    description: "select/2과제/02_2과제_1등의 Workflow, Analytics, Event Handling, MSK 모듈을 자세히 풀어쓴 문서입니다.",
+    file: "02_2과제_1등_상세풀이.md",
+  },
 };
 
 const params = new URLSearchParams(window.location.search);
