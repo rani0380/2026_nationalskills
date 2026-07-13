@@ -20,8 +20,8 @@ const docs = {
     file: "02_1과제_1등_상세풀이.md",
   },
   task02second: {
-    title: "02_2과제_1등 상세 풀이",
-    description: "select/2과제/02_2과제_1등의 Workflow, Analytics, Event Handling, MSK 모듈을 자세히 풀어쓴 문서입니다.",
+    title: "2과제 풀이해설서",
+    description: "select/2과제/02_2과제_1등의 Workflow, Analytics, Event Handling, MSK 모듈 풀이와 이론을 정리한 문서입니다.",
     file: "02_2과제_1등_상세풀이.md",
   },
   task02m1: {
