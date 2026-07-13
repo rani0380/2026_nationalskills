@@ -95,6 +95,10 @@ h1 {
   letter-spacing: 0;
 }
 
+.hero h1 span {
+  display: block;
+}
+
 .hero-copy {
   max-width: 760px;
   color: #344252;
