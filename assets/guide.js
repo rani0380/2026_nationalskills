@@ -24,6 +24,26 @@ const docs = {
     description: "select/2과제/02_2과제_1등의 Workflow, Analytics, Event Handling, MSK 모듈을 자세히 풀어쓴 문서입니다.",
     file: "02_2과제_1등_상세풀이.md",
   },
+  task02m1: {
+    title: "02_2 Module 1 Workflow 설명서",
+    description: "S3, Lambda, DynamoDB, Step Functions로 학생 성적 처리 워크플로우를 구성하는 모듈별 설명서입니다.",
+    file: "02_2과제_Module1_Workflow_설명서.md",
+  },
+  task02m2: {
+    title: "02_2 Module 2 Analytics 설명서",
+    description: "EC2, ALB, Kinesis Data Stream, Managed Flink로 실시간 주문 분석을 구성하는 모듈별 설명서입니다.",
+    file: "02_2과제_Module2_Analytics_설명서.md",
+  },
+  task02m3: {
+    title: "02_2 Module 3 Event Handling 설명서",
+    description: "EventBridge, AWS Config, Lambda, SNS로 보안 이벤트 자동 복구를 구성하는 모듈별 설명서입니다.",
+    file: "02_2과제_Module3_EventHandling_설명서.md",
+  },
+  task02m4: {
+    title: "02_2 Module 4 MSK 설명서",
+    description: "Amazon MSK, Kafka topic, Producer EC2, Lambda consumer로 스트리밍 파이프라인을 구성하는 모듈별 설명서입니다.",
+    file: "02_2과제_Module4_MSK_설명서.md",
+  },
 };
 
 const params = new URLSearchParams(window.location.search);
