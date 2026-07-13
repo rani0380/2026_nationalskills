@@ -44,6 +44,11 @@ const docs = {
     description: "Amazon MSK, Kafka topic, Producer EC2, Lambda consumer로 스트리밍 파이프라인을 구성하는 모듈별 설명서입니다.",
     file: "02_2과제_Module4_MSK_설명서.md",
   },
+  consoleCli: {
+    title: "AWS 콘솔 + CLI 보강 풀이",
+    description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",
+    file: "AWS콘솔_CLI_보강풀이.md",
+  },
 };
 
 const params = new URLSearchParams(window.location.search);
@@ -127,6 +132,14 @@ function renderMarkdown(markdown) {
       continue;
     }
 
+    const image = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    if (image) {
+      closeLists();
+      html.push(`<figure><img src="${escapeHtml(image[2])}" alt="${escapeHtml(image[1])}"><figcaption>${escapeHtml(image[1])}</figcaption></figure>`);
+      index += 1;
+      continue;
+    }
+
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       closeLists();
@@ -191,6 +204,7 @@ function isBlockStart(lines, index) {
     || /^(#{1,6})\s+/.test(line)
     || /^\s*[-*]\s+/.test(line)
     || /^\s*\d+\.\s+/.test(line)
+    || /^!\[[^\]]*\]\([^)]+\)$/.test(line)
     || isTableStart(lines, index);
 }
 

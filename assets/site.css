@@ -203,6 +203,11 @@ h1 {
   font-weight: 800;
 }
 
+.guide-card.accent-card {
+  border-color: #8bb9aa;
+  background: #f4fbf8;
+}
+
 .badge {
   display: inline-flex;
   padding: 5px 9px;
@@ -391,6 +396,27 @@ h1 {
   padding: 0;
   background: transparent;
   color: #f8fafc;
+}
+
+.markdown-body figure {
+  margin: 24px 0 30px;
+}
+
+.markdown-body figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  box-shadow: 0 10px 24px rgba(25, 35, 50, 0.08);
+}
+
+.markdown-body figcaption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
 }
 
 .table-wrap {
