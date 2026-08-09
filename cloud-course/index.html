@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWS 클라우드컴퓨팅 18차시 실습과정</title>
+<style>
+:root{--bg:#0b1020;--panel:#131a2c;--text:#eef4ff;--muted:#aab6cc;--line:#27324b;--accent:#8ab4ff}*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR","Malgun Gothic",sans-serif;background:linear-gradient(160deg,#0b1020,#10172a 55%,#0d1424);color:var(--text);line-height:1.6}.wrap{max-width:1100px;margin:auto;padding:32px 18px 70px}.hero{padding:48px 28px;border:1px solid var(--line);border-radius:24px;background:rgba(19,26,44,.88);box-shadow:0 18px 60px rgba(0,0,0,.25)}.eyebrow{color:var(--accent);font-weight:700;letter-spacing:.08em}h1{font-size:clamp(34px,6vw,64px);line-height:1.05;margin:.15em 0}.lead{font-size:18px;color:var(--muted);max-width:780px}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.btn{display:inline-block;padding:12px 16px;border-radius:12px;text-decoration:none;font-weight:700;border:1px solid var(--line);color:#08101f;background:#eaf2ff}.btn.alt{color:var(--text);background:transparent}.info{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:26px}.pill{background:#0d1424;border:1px solid var(--line);border-radius:14px;padding:14px}.pill b{display:block;font-size:20px}h2{font-size:28px;margin:44px 0 16px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.card{display:flex;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}.num{min-width:48px;height:48px;border-radius:14px;background:#1c2844;display:grid;place-items:center;font-weight:800;color:var(--accent)}h3{margin:0 0 4px;font-size:17px}.card p{margin:0;color:var(--muted);font-size:14px}.notice{margin-top:36px;padding:20px;border-radius:18px;border:1px solid #4a3d1a;background:#201a0c;color:#f4e4b2}footer{margin-top:40px;color:var(--muted);font-size:13px;text-align:center}@media(max-width:750px){.info{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.hero{padding:30px 20px}}
+</style>
+</head>
+<body><div class="wrap">
+<section class="hero"><div class="eyebrow">2026 전국기능경기대회 대비 · 클라우드컴퓨팅</div><h1>AWS 클라우드컴퓨팅<br>18차시 실습과정</h1><p class="lead">VPC부터 RDS, Docker, ECR, EKS, ALB, S3, 모니터링, 성능·비용 튜닝, 3시간 모의대회까지 단계적으로 학습하는 수업용 과정입니다.</p><div class="actions"><a class="btn" href="../">메인 자료실로 돌아가기</a><a class="btn alt" href="https://github.com/rani0380/2026_nationalskills">GitHub 저장소</a></div><div class="info"><div class="pill"><b>18차시</b>전체 실습과정</div><div class="pill"><b>3개 앱</b>USER · PRODUCT · STRESS</div><div class="pill"><b>1 Endpoint</b>경로 기반 라우팅</div><div class="pill"><b>3시간</b>최종 모의대회</div></div></section>
+<h2>차시별 학습 내용</h2><section class="grid">
+<article class="card"><div class="num">01</div><div><h3>과제 분석과 전체 아키텍처 이해</h3><p>과제 구조와 AWS 서비스 역할을 이해합니다.</p></div></article>
+<article class="card"><div class="num">02</div><div><h3>VPC·Subnet·Security Group</h3><p>네트워크와 보안 경계를 구성합니다.</p></div></article>
+<article class="card"><div class="num">03</div><div><h3>RDS MySQL과 데이터 적재</h3><p>MySQL RDS와 dev 데이터베이스를 준비합니다.</p></div></article>
+<article class="card"><div class="num">04</div><div><h3>애플리케이션 단독 실행</h3><p>USER/PRODUCT/STRESS 바이너리를 직접 실행하고 API를 확인합니다.</p></div></article>
+<article class="card"><div class="num">05</div><div><h3>Docker 컨테이너화</h3><p>애플리케이션을 Docker 이미지로 만듭니다.</p></div></article>
+<article class="card"><div class="num">06</div><div><h3>ECR 이미지 저장소</h3><p>Docker 이미지를 ECR에 push/pull합니다.</p></div></article>
+<article class="card"><div class="num">07</div><div><h3>EKS 클러스터와 Worker Node</h3><p>EKS와 t3.medium 노드를 구성합니다.</p></div></article>
+<article class="card"><div class="num">08</div><div><h3>Deployment·Service·Probe</h3><p>Pod 자동복구와 내부 서비스를 구성합니다.</p></div></article>
+<article class="card"><div class="num">09</div><div><h3>세 애플리케이션 전체 배포</h3><p>USER/PRODUCT/STRESS를 EKS에 배포합니다.</p></div></article>
+<article class="card"><div class="num">10</div><div><h3>ALB·Ingress 단일 Endpoint</h3><p>하나의 외부 주소로 경로 기반 라우팅을 구성합니다.</p></div></article>
+<article class="card"><div class="num">11</div><div><h3>S3 상품 이미지 서비스</h3><p>상품 이미지를 S3와 /images 경로로 제공합니다.</p></div></article>
+<article class="card"><div class="num">12</div><div><h3>403·404 처리</h3><p>비정상 요청과 존재하지 않는 API를 구분합니다.</p></div></article>
+<article class="card"><div class="num">13</div><div><h3>CloudWatch·로그·장애 분석</h3><p>상태와 로그를 통해 장애 원인을 찾습니다.</p></div></article>
+<article class="card"><div class="num">14</div><div><h3>성능·처리율 측정</h3><p>응답시간과 성공률을 측정합니다.</p></div></article>
+<article class="card"><div class="num">15</div><div><h3>Pod·Node 성능 튜닝</h3><p>병목을 찾고 replica/Node를 조절합니다.</p></div></article>
+<article class="card"><div class="num">16</div><div><h3>비용 최적화</h3><p>성능을 유지하는 최소 리소스 구성을 찾습니다.</p></div></article>
+<article class="card"><div class="num">17</div><div><h3>장애 대응 종합훈련</h3><p>대표 장애를 진단하고 복구합니다.</p></div></article>
+<article class="card"><div class="num">18</div><div><h3>3시간 실전 모의대회</h3><p>구축·검증·튜닝·제출을 독립 수행합니다.</p></div></article>
+</section>
+<section class="notice"><strong>대회 필수조건:</strong> 서울 리전(ap-northeast-2), RDS MySQL 8.0 / db.t3.micro / gp3 / Multi-AZ DB instance, EC2 t3.medium, Lambda 사용 금지, USER·PRODUCT·STRESS TCP 8080, 외부 Endpoint 단일화, 비정상 요청 403 / 미존재 API 404를 반드시 구분합니다.</section>
+<footer>2026 전국기능경기대회 클라우드컴퓨팅 수업용 실습 페이지</footer>
+</div></body></html>
