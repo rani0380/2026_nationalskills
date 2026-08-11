@@ -1,0 +1,184 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apdev
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: apdev
+data:
+  MYSQL_HOST: REPLACE_RDS_ENDPOINT
+  MYSQL_PORT: "3306"
+  MYSQL_DBNAME: dev
+  AWS_REGION: ap-northeast-2
+  S3_BUCKET: REPLACE_S3_BUCKET
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-deployment
+  namespace: apdev
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: user
+  template:
+    metadata:
+      labels:
+        app: user
+    spec:
+      containers:
+        - name: user
+          image: REPLACE_ACCOUNT_ID.dkr.ecr.ap-northeast-2.amazonaws.com/user@sha256:REPLACE_USER_DIGEST
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-db-secret
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          startupProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: apdev
+spec:
+  type: ClusterIP
+  selector:
+    app: user
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-deployment
+  namespace: apdev
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: product
+  template:
+    metadata:
+      labels:
+        app: product
+    spec:
+      containers:
+        - name: product
+          image: REPLACE_ACCOUNT_ID.dkr.ecr.ap-northeast-2.amazonaws.com/product@sha256:REPLACE_PRODUCT_DIGEST
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-db-secret
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          startupProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: apdev
+spec:
+  type: ClusterIP
+  selector:
+    app: product
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stress-deployment
+  namespace: apdev
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: stress
+  template:
+    metadata:
+      labels:
+        app: stress
+    spec:
+      containers:
+        - name: stress
+          image: REPLACE_ACCOUNT_ID.dkr.ecr.ap-northeast-2.amazonaws.com/stress@sha256:REPLACE_STRESS_DIGEST
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          startupProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+            failureThreshold: 12
+          readinessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stress-service
+  namespace: apdev
+spec:
+  type: ClusterIP
+  selector:
+    app: stress
+  ports:
+    - {name: http, port: 8080, targetPort: http}
