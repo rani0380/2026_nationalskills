@@ -1,5 +1,5 @@
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>차시별 실습 | AWS 클라우드컴퓨팅</title><style>
-:root{--bg:#0b1020;--panel:#131a2c;--text:#eef4ff;--muted:#aab6cc;--line:#27324b;--accent:#8ab4ff;--ok:#77d9a8}*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR","Malgun Gothic",sans-serif;background:linear-gradient(160deg,#0b1020,#10172a 55%,#0d1424);color:var(--text);line-height:1.7}.wrap{max-width:920px;margin:auto;padding:26px 18px 70px}a{color:var(--accent)}.top,.nav{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:24px}.back,.nav a{text-decoration:none;border:1px solid var(--line);border-radius:12px;padding:10px 14px}.hero,.panel{background:rgba(19,26,44,.9);border:1px solid var(--line);border-radius:20px;padding:26px;margin-top:16px}.eyebrow{color:var(--accent);font-weight:800}h1{font-size:clamp(28px,5vw,46px);line-height:1.15;margin:.15em 0}.summary,.counter{color:var(--muted)}h2{margin:0 0 10px}.complete{border-color:#235d47}.complete h2{color:var(--ok)}li+li{margin-top:7px}.nav{margin-top:24px}.nav a[hidden]{visibility:hidden}.table-wrap{overflow-x:auto}.network-table{width:100%;border-collapse:collapse;min-width:700px}.network-table th,.network-table td{padding:11px 12px;border:1px solid var(--line);text-align:left;vertical-align:top}.network-table th{background:#1c2844;color:var(--accent)}.network-table td{color:var(--muted)}.network-table code{color:var(--text)}.tip{padding:14px 16px;border-left:4px solid var(--accent);background:#0d1424;color:var(--muted)}.diagram{font-family:Consolas,monospace;white-space:pre-wrap;background:#0a1121;border:1px solid var(--line);border-radius:12px;padding:16px;color:var(--text)}</style></head><body><main class="wrap">
+:root{--bg:#0b1020;--panel:#131a2c;--text:#eef4ff;--muted:#aab6cc;--line:#27324b;--accent:#8ab4ff;--ok:#77d9a8}*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR","Malgun Gothic",sans-serif;background:linear-gradient(160deg,#0b1020,#10172a 55%,#0d1424);color:var(--text);line-height:1.7}.wrap{max-width:920px;margin:auto;padding:26px 18px 70px}a{color:var(--accent)}.top,.nav{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:24px}.back,.nav a{text-decoration:none;border:1px solid var(--line);border-radius:12px;padding:10px 14px}.hero,.panel{background:rgba(19,26,44,.9);border:1px solid var(--line);border-radius:20px;padding:26px;margin-top:16px}.eyebrow{color:var(--accent);font-weight:800}h1{font-size:clamp(28px,5vw,46px);line-height:1.15;margin:.15em 0}.summary,.counter{color:var(--muted)}h2{margin:0 0 10px}.complete{border-color:#235d47}.complete h2{color:var(--ok)}li+li{margin-top:7px}.nav{margin-top:24px}.nav a[hidden]{visibility:hidden}.table-wrap{overflow-x:auto}.network-table{width:100%;border-collapse:collapse;min-width:700px}.network-table th,.network-table td{padding:11px 12px;border:1px solid var(--line);text-align:left;vertical-align:top}.network-table th{background:#1c2844;color:var(--accent)}.network-table td{color:var(--muted)}.network-table code{color:var(--text)}.tip{padding:14px 16px;border-left:4px solid var(--accent);background:#0d1424;color:var(--muted)}.diagram{font-family:Consolas,monospace;white-space:pre-wrap;background:#0a1121;border:1px solid var(--line);border-radius:12px;padding:16px;color:var(--text)}.code-block{overflow-x:auto;white-space:pre;background:#080d18;border:1px solid var(--line);border-radius:12px;padding:16px;color:#dbe8ff;font:13px/1.65 Consolas,monospace}.check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.check-item{padding:12px;border:1px solid var(--line);border-radius:12px;background:#0d1424}.check-item b{display:block;color:var(--accent)}@media(max-width:650px){.check-grid{grid-template-columns:1fr}}</style></head><body><main class="wrap">
 <div class="top"><a class="back" href="./">← 전체 차시</a><span class="counter" id="counter"></span></div><section class="hero"><div class="eyebrow" id="eyebrow"></div><h1 id="title"></h1><p class="summary" id="summary"></p></section><section class="panel"><h2>학습 목표</h2><ul id="goals"></ul></section><div id="lesson-extra"></div><section class="panel"><h2>실습 순서</h2><ol id="steps"></ol></section><section class="panel"><h2>검증 포인트</h2><ul id="checks"></ul></section><section class="panel complete"><h2>완료 기준</h2><p id="done"></p></section><nav class="nav"><a id="prev">← 이전 차시</a><a id="next">다음 차시 →</a></nav></main><script>
 const raw=[
 ['과제 분석과 전체 아키텍처 이해','채점기준을 AWS 구성과 트래픽 흐름으로 바꿉니다.','필수 서비스와 고정값 구분|단일 Endpoint 흐름 설명','과제지 고정값 표시|Client→ALB→EKS→RDS/S3 구성도 작성|가용성·성능·비용 항목 정리','서울 리전과 EC2 제한 확인|Lambda·Fargate 제외','전체 구성도와 리소스 목록 완성'],
@@ -47,5 +47,84 @@ Internet Gateway → Public Subnet의 ALB
 <tr><td>eks-node-sg</td><td>Outbound</td><td>HTTPS 443</td><td>S3 또는 <code>0.0.0.0/0</code></td><td>ECR/S3/API 접속</td></tr>
 <tr><td>rds-sg</td><td>Inbound</td><td>TCP 3306</td><td><code>eks-node-sg</code></td><td>EKS 애플리케이션만 DB 접속</td></tr>
 </tbody></table></div><p class="tip">IP 대역 전체를 Source로 허용하기보다 Security Group ID를 서로 참조해야 권한 범위가 작고 구성이 명확합니다. RDS에는 Public IP를 부여하지 않습니다.</p></section>
-<section class="panel"><h2>구축 순서</h2><ol><li><code>10.0.0.0/16</code> VPC를 만들고 DNS resolution/hostnames를 활성화합니다.</li><li>2개 AZ에 Public, Private-App, Private-DB 서브넷을 각각 만듭니다.</li><li>Internet Gateway를 VPC에 연결하고 Public Route Table에 기본 경로를 추가합니다.</li><li>NAT Gateway를 Public-A에 만들고 Private-App Route Table의 기본 경로로 지정합니다.</li><li>DB Subnet Group에는 Private-DB-A와 Private-DB-C만 포함합니다.</li><li>위 표대로 ALB, EKS Node, RDS Security Group을 만들고 SG ID로 참조합니다.</li></ol></section>`;}if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
+<section class="panel"><h2>구축 순서</h2><ol><li><code>10.0.0.0/16</code> VPC를 만들고 DNS resolution/hostnames를 활성화합니다.</li><li>2개 AZ에 Public, Private-App, Private-DB 서브넷을 각각 만듭니다.</li><li>Internet Gateway를 VPC에 연결하고 Public Route Table에 기본 경로를 추가합니다.</li><li>NAT Gateway를 Public-A에 만들고 Private-App Route Table의 기본 경로로 지정합니다.</li><li>DB Subnet Group에는 Private-DB-A와 Private-DB-C만 포함합니다.</li><li>위 표대로 ALB, EKS Node, RDS Security Group을 만들고 SG ID로 참조합니다.</li></ol></section>`;}if(n===3){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>대회 지정 RDS 구성표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>항목</th><th>설정값</th><th>확인 이유</th></tr></thead><tbody>
+<tr><td>DB identifier</td><td><code>apdev-rds-instance</code></td><td>대소문자까지 명세와 일치</td></tr>
+<tr><td>Region</td><td><code>ap-northeast-2</code></td><td>서울 리전에 생성</td></tr>
+<tr><td>Engine</td><td>MySQL Community 8.0</td><td>제공 애플리케이션 호환</td></tr>
+<tr><td>Deployment</td><td>Multi-AZ DB instance</td><td>장애 시 Standby로 자동 전환</td></tr>
+<tr><td>Instance class</td><td><code>db.t3.micro</code></td><td>지정 타입과 비용 조건 준수</td></tr>
+<tr><td>Storage</td><td>General Purpose SSD <code>gp3</code></td><td>대회 지정 스토리지</td></tr>
+<tr><td>Initial DB name</td><td><code>dev</code></td><td>MYSQL_DBNAME 환경변수와 일치</td></tr>
+<tr><td>Port</td><td><code>3306</code></td><td>MySQL 기본 포트</td></tr>
+<tr><td>Public access</td><td><strong>No</strong></td><td>Private DB Subnet에서만 운영</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>연결 구조</h2><div class="diagram">EKS Pod / Worker Node
+   │ MYSQL_HOST = RDS endpoint (엔진명·프로토콜 제외)
+   │ TCP 3306, Source = eks-node-sg
+   ▼
+rds-sg → apdev-rds-instance → dev
+                                ├─ user
+                                └─ product</div><p class="tip">DB Subnet Group에는 2차시에서 만든 <code>db-a</code>(ap-northeast-2a)와 <code>db-c</code>(ap-northeast-2c)만 넣습니다. RDS Security Group의 3306 Inbound Source는 IP 대역이 아니라 <code>eks-node-sg</code>로 지정합니다.</p></section>
+<section class="panel"><h2>AWS 콘솔 생성 순서</h2><ol><li>RDS → Subnet groups에서 <code>apdev-db-subnet-group</code>을 만들고 <code>db-a</code>, <code>db-c</code>를 선택합니다.</li><li>Security Group <code>rds-sg</code>를 만들고 TCP 3306 Source를 <code>eks-node-sg</code>로 제한합니다.</li><li>RDS → Create database → Standard create → MySQL을 선택합니다.</li><li>위 지정 구성표대로 identifier, Multi-AZ, db.t3.micro, gp3, dev를 입력합니다.</li><li>Connectivity에서 실습 VPC, DB Subnet Group, <strong>Public access No</strong>, <code>rds-sg</code>를 선택합니다.</li><li>생성 완료 후 Connectivity & security에서 RDS endpoint와 포트 3306을 기록합니다.</li></ol></section>
+<section class="panel"><h2>데이터베이스와 애플리케이션 계정 생성</h2><p>RDS Master 계정으로 접속한 뒤 애플리케이션 전용 계정을 만듭니다. 비밀번호는 예시 문자열을 그대로 사용하지 말고 안전한 값으로 바꾸세요.</p><pre class="code-block">mysql -h &lt;RDS_ENDPOINT&gt; -P 3306 -u &lt;MASTER_USER&gt; -p
+
+CREATE DATABASE IF NOT EXISTS dev
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS 'appuser'@'%'
+  IDENTIFIED BY '&lt;STRONG_PASSWORD&gt;';
+GRANT SELECT, INSERT, UPDATE, DELETE ON dev.* TO 'appuser'@'%';
+FLUSH PRIVILEGES;</pre></section>
+<section class="panel"><h2>테이블 생성 SQL</h2><pre class="code-block">USE dev;
+
+CREATE TABLE user (
+    id        VARCHAR(255) NOT NULL,
+    username  VARCHAR(255) NOT NULL,
+    email     VARCHAR(255) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_username (username),
+    INDEX idx_user_email (email)
+);
+
+CREATE TABLE product (
+    id          VARCHAR(255) NOT NULL,
+    name        VARCHAR(255) NOT NULL,
+    price       FLOAT(8) NOT NULL,
+    image_path  VARCHAR(500) DEFAULT NULL,
+    PRIMARY KEY (id)
+);</pre><p class="tip"><code>GET /v1/user?email=...</code> 요청이 반복되므로 <code>email</code> 인덱스를 추가합니다. product는 기본키 <code>id</code> 조회가 빈번하므로 Primary Key 인덱스를 그대로 활용합니다.</p></section>
+<section class="panel"><h2>load_user.dump 적재</h2><pre class="code-block">mysql -h &lt;RDS_ENDPOINT&gt; -P 3306 \
+  -u appuser -p dev &lt; load_user.dump
+
+mysql -h &lt;RDS_ENDPOINT&gt; -P 3306 \
+  -u appuser -p -D dev \
+  -e "SELECT COUNT(*) AS user_count FROM user;"</pre><p class="tip">지급된 dump 데이터는 임의로 수정·삭제하거나 불필요한 데이터를 추가하지 않습니다. 재실행 전에 중복키가 발생하는 방식인지 먼저 확인하세요.</p></section>
+<section class="panel"><h2>애플리케이션 환경변수</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>Key</th><th>예시 값</th><th>주의사항</th></tr></thead><tbody>
+<tr><td><code>MYSQL_USER</code></td><td><code>appuser</code></td><td>dev 읽기·쓰기 권한</td></tr>
+<tr><td><code>MYSQL_PASSWORD</code></td><td>Secret에서 주입</td><td>이미지나 YAML 원문에 저장 금지</td></tr>
+<tr><td><code>MYSQL_HOST</code></td><td><code>apdev-rds-instance.xxxx.ap-northeast-2.rds.amazonaws.com</code></td><td><code>mysql://</code> 또는 엔진명 입력 금지</td></tr>
+<tr><td><code>MYSQL_PORT</code></td><td><code>3306</code></td><td>정수 문자열</td></tr>
+<tr><td><code>MYSQL_DBNAME</code></td><td><code>dev</code></td><td>대회 지정 논리 DB</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>읽기·쓰기 검증</h2><pre class="code-block">mysql -h &lt;RDS_ENDPOINT&gt; -u appuser -p -D dev
+
+SHOW TABLES;
+SHOW INDEX FROM user;
+SELECT id, username, email FROM user LIMIT 3;
+
+START TRANSACTION;
+INSERT INTO product (id, name, price)
+VALUES ('rds-check-001', 'connection-check', 1000);
+SELECT * FROM product WHERE id = 'rds-check-001';
+ROLLBACK;</pre><div class="check-grid"><div class="check-item"><b>연결</b>EKS 네트워크에서 endpoint:3306 접속</div><div class="check-item"><b>읽기</b>dump의 user 데이터 조회</div><div class="check-item"><b>쓰기</b>트랜잭션 내 INSERT 성공</div><div class="check-item"><b>보안</b>인터넷에서 RDS 직접 접속 불가</div></div></section>
+<section class="panel"><h2>오류별 점검표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>증상</th><th>주요 원인</th><th>확인 항목</th></tr></thead><tbody>
+<tr><td>Connection timed out</td><td>SG, Route, NACL</td><td>rds-sg 3306 Source와 EKS Node SG 확인</td></tr>
+<tr><td>Access denied</td><td>계정·암호·권한 오류</td><td><code>SHOW GRANTS FOR 'appuser'@'%';</code></td></tr>
+<tr><td>Unknown database</td><td>dev 미생성 또는 이름 오타</td><td><code>SHOW DATABASES;</code></td></tr>
+<tr><td>Duplicate entry</td><td>dump 중복 적재</td><td>기존 데이터와 적재 횟수 확인</td></tr>
+<tr><td>느린 user GET</td><td>email 인덱스 없음</td><td><code>EXPLAIN SELECT ... WHERE email=...</code></td></tr>
+</tbody></table></div></section>`;}
+if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
 </script></body></html>
