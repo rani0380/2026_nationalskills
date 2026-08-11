@@ -39,7 +39,20 @@ Internet Gateway → Public Subnet의 ALB
 <tr><td><strong>Private DB</strong></td><td>ap-northeast-2a</td><td><code>db-a</code></td><td><code>10.0.11.0/24</code></td><td>RDS</td></tr>
 <tr><td><strong>Private DB</strong></td><td>ap-northeast-2c</td><td><code>db-c</code></td><td><code>10.0.12.0/24</code></td><td>RDS</td></tr>
 </tbody></table></div><p class="tip">VPC CIDR은 <code>10.0.0.0/16</code>을 사용합니다. Public 서브넷은 Internet Gateway 경로를, Private App 서브넷은 NAT Gateway 경로를 사용하며 Private DB 서브넷은 인터넷 기본 경로를 두지 않습니다.</p></section>
-<section class="panel"><h2>Security Group 규칙표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>대상 SG</th><th>방향</th><th>프로토콜/포트</th><th>허용 Source/Destination</th><th>목적</th></tr></thead><tbody>
+<section class="panel"><h2>Gateway 구성표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>구성 요소</th><th>이름</th><th>배치·연결 위치</th><th>연결 대상</th><th>용도</th></tr></thead><tbody>
+<tr><td>Internet Gateway</td><td><code>apdev-igw</code></td><td><code>apdev-vpc</code>에 Attach</td><td>Public Route Table</td><td>ALB의 인터넷 통신 및 NAT Gateway의 외부 경로</td></tr>
+<tr><td>NAT Gateway A</td><td><code>apdev-nat-a</code></td><td><code>public-a</code> / Elastic IP</td><td><code>private-app-rt-a</code></td><td>2a의 EKS Node·Pod가 외부 API, ECR 등에 접근</td></tr>
+<tr><td>NAT Gateway C</td><td><code>apdev-nat-c</code></td><td><code>public-c</code> / Elastic IP</td><td><code>private-app-rt-c</code></td><td>2c의 EKS Node·Pod가 외부 API, ECR 등에 접근</td></tr>
+</tbody></table></div><p class="tip">가용 영역 장애에 대비하려면 AZ마다 NAT Gateway를 하나씩 두고 같은 AZ의 Private App Subnet이 사용하도록 구성합니다. 비용을 줄이기 위해 실습에서 NAT Gateway 하나만 사용할 경우에는 <code>private-a</code>와 <code>private-c</code> 모두 그 NAT를 향하게 할 수 있지만, 단일 장애 지점과 교차 AZ 데이터 처리 비용이 생깁니다.</p></section>
+<section class="panel"><h2>Route Table 연결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>Route Table</th><th>연결 Subnet</th><th>Destination</th><th>Target</th><th>설명</th></tr></thead><tbody>
+<tr><td><code>public-rt</code></td><td><code>public-a</code>, <code>public-c</code></td><td><code>10.0.0.0/16</code></td><td><code>local</code></td><td>VPC 내부 통신</td></tr>
+<tr><td><code>public-rt</code></td><td><code>public-a</code>, <code>public-c</code></td><td><code>0.0.0.0/0</code></td><td><code>apdev-igw</code></td><td>ALB와 NAT Gateway의 인터넷 경로</td></tr>
+<tr><td><code>private-app-rt-a</code></td><td><code>private-a</code></td><td><code>10.0.0.0/16</code></td><td><code>local</code></td><td>VPC 내부 통신</td></tr>
+<tr><td><code>private-app-rt-a</code></td><td><code>private-a</code></td><td><code>0.0.0.0/0</code></td><td><code>apdev-nat-a</code></td><td>2a App Subnet의 Outbound 인터넷 통신</td></tr>
+<tr><td><code>private-app-rt-c</code></td><td><code>private-c</code></td><td><code>10.0.0.0/16</code></td><td><code>local</code></td><td>VPC 내부 통신</td></tr>
+<tr><td><code>private-app-rt-c</code></td><td><code>private-c</code></td><td><code>0.0.0.0/0</code></td><td><code>apdev-nat-c</code></td><td>2c App Subnet의 Outbound 인터넷 통신</td></tr>
+<tr><td><code>private-db-rt</code></td><td><code>db-a</code>, <code>db-c</code></td><td><code>10.0.0.0/16</code></td><td><code>local</code></td><td>RDS는 VPC 내부에서만 통신</td></tr>
+</tbody></table></div><p class="tip">Private DB Route Table에는 <code>0.0.0.0/0</code> 경로를 추가하지 않습니다. 모든 Route Table에 자동 생성되는 <code>local</code> 경로는 삭제하거나 변경하지 않습니다.</p></section><section class="panel"><h2>Security Group 규칙표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>대상 SG</th><th>방향</th><th>프로토콜/포트</th><th>허용 Source/Destination</th><th>목적</th></tr></thead><tbody>
 <tr><td>alb-sg</td><td>Inbound</td><td>HTTPS 443</td><td><code>0.0.0.0/0</code></td><td>인터넷 사용자 접속</td></tr>
 <tr><td>alb-sg</td><td>Outbound</td><td>TCP 8080</td><td><code>eks-node-sg</code></td><td>애플리케이션 전달</td></tr>
 <tr><td>eks-node-sg</td><td>Inbound</td><td>TCP 8080</td><td><code>alb-sg</code></td><td>ALB 요청만 허용</td></tr>
