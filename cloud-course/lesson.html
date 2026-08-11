@@ -972,5 +972,263 @@ kubectl rollout status deployment/user-deployment
 # 이미지·Probe·Resource 설정 확인
 kubectl get deployment user-deployment -o yaml | \
   grep -E 'image:|startupProbe:|readinessProbe:|livenessProbe:|requests:|limits:'</pre><div class="check-grid"><div class="check-item"><b>Deployment</b>Available 2/2</div><div class="check-item"><b>Pod</b>Running, Ready 1/1</div><div class="check-item"><b>Service</b>ClusterIP, port 8080</div><div class="check-item"><b>Endpoint</b>Ready Pod IP 2개</div></div></section>
-<section class="panel"><h2>9차시 전달 체크리스트</h2><ul><li><code>apdev</code> Namespace에서 작업합니다.</li><li>USER Deployment의 Replica 2개가 모두 Available입니다.</li><li>Deployment selector, Pod label, Service selector가 모두 <code>app: user</code>로 일치합니다.</li><li>Service는 <code>ClusterIP</code>이며 port와 targetPort가 8080으로 연결됩니다.</li><li>startup, readiness, liveness Probe가 <code>/healthcheck</code>를 사용합니다.</li><li>Service Endpoint에 Ready Pod IP가 등록됩니다.</li><li>Pod 삭제 후 자동복구와 Rolling Update·Rollback을 검증했습니다.</li><li>Secret 원문과 <code>app.env</code>는 Git 및 제출 파일에 포함되지 않습니다.</li></ul><p>공식 참고: <a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/">Deployment</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/service/">Service</a>, <a href="https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/">Liveness, Readiness, Startup Probes</a>, <a href="https://kubernetes.io/docs/tasks/run-application/rolling-update-replication-controller/">Rolling Update</a></p></section>`;}if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
+<section class="panel"><h2>9차시 전달 체크리스트</h2><ul><li><code>apdev</code> Namespace에서 작업합니다.</li><li>USER Deployment의 Replica 2개가 모두 Available입니다.</li><li>Deployment selector, Pod label, Service selector가 모두 <code>app: user</code>로 일치합니다.</li><li>Service는 <code>ClusterIP</code>이며 port와 targetPort가 8080으로 연결됩니다.</li><li>startup, readiness, liveness Probe가 <code>/healthcheck</code>를 사용합니다.</li><li>Service Endpoint에 Ready Pod IP가 등록됩니다.</li><li>Pod 삭제 후 자동복구와 Rolling Update·Rollback을 검증했습니다.</li><li>Secret 원문과 <code>app.env</code>는 Git 및 제출 파일에 포함되지 않습니다.</li></ul><p>공식 참고: <a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/">Deployment</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/service/">Service</a>, <a href="https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/">Liveness, Readiness, Startup Probes</a>, <a href="https://kubernetes.io/docs/tasks/run-application/rolling-update-replication-controller/">Rolling Update</a></p></section>`;}if(n===9){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>전체 배포 목표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>앱</th><th>Deployment</th><th>Service</th><th>Replica</th><th>주요 연동</th></tr></thead><tbody>
+<tr><td>USER</td><td><code>user-deployment</code></td><td><code>user-service:8080</code></td><td>2</td><td>RDS MySQL</td></tr>
+<tr><td>PRODUCT</td><td><code>product-deployment</code></td><td><code>product-service:8080</code></td><td>2</td><td>RDS MySQL, S3</td></tr>
+<tr><td>STRESS</td><td><code>stress-deployment</code></td><td><code>stress-service:8080</code></td><td>1</td><td>CPU 부하 기능</td></tr>
+</tbody></table></div><div class="diagram">user-service ─────→ USER Pod × 2 ─────→ RDS
+product-service ──→ PRODUCT Pod × 2 ──→ RDS / S3
+stress-service ───→ STRESS Pod × 1</div><p class="tip">각 앱은 별도 Deployment와 ClusterIP Service를 사용합니다. 하나의 Pod에 세 Container를 넣거나 하나의 Service selector로 세 앱을 함께 선택하지 않습니다.</p></section>
+<section class="panel"><h2>1. 사전 점검과 이미지 Digest 기록</h2><pre class="code-block">export AWS_REGION=ap-northeast-2
+export NAMESPACE=apdev
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+  --query Account --output text)
+export ECR_PREFIX=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+kubectl config set-context --current --namespace="$NAMESPACE"
+kubectl get nodes
+kubectl get deployment user-deployment
+
+for APP in user product stress; do
+  aws ecr describe-images \
+    --region "$AWS_REGION" \
+    --repository-name "$APP" \
+    --query 'sort_by(imageDetails,&amp; imagePushedAt)[-1].{digest:imageDigest,tags:imageTags,pushed:imagePushedAt}' \
+    --output table
+done</pre><p class="tip">세 이미지의 <code>sha256</code> digest를 각각 기록합니다. 최신 이미지라는 이유만으로 태그를 추측하지 말고 6차시에서 검증한 digest와 일치하는지 확인합니다.</p></section>
+<section class="panel"><h2>2. 공통 ConfigMap·Secret 확인</h2><pre class="code-block">kubectl get configmap user-config
+kubectl get secret user-db-secret
+
+# 이름을 세 앱에서 공유하도록 명확하게 변경
+kubectl create configmap app-config \
+  --from-literal=MYSQL_HOST=&lt;RDS_ENDPOINT&gt; \
+  --from-literal=MYSQL_PORT=3306 \
+  --from-literal=MYSQL_DBNAME=dev \
+  --from-literal=AWS_REGION=ap-northeast-2 \
+  --from-literal=S3_BUCKET=&lt;PRODUCT_IMAGE_BUCKET&gt; \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+read -rsp 'DB password: ' DB_PASSWORD; echo
+umask 077
+printf '%s' "$DB_PASSWORD" &gt; /tmp/mysql-password
+kubectl create secret generic app-db-secret \
+  --from-literal=MYSQL_USER=appuser \
+  --from-file=MYSQL_PASSWORD=/tmp/mysql-password \
+  --dry-run=client -o yaml | kubectl apply -f -
+rm -f /tmp/mysql-password
+unset DB_PASSWORD
+
+kubectl get configmap app-config
+kubectl get secret app-db-secret</pre><p class="tip">권한 600인 임시 파일을 사용하고 Secret 생성 직후 삭제합니다. 비밀번호를 명령줄, YAML, Git 기록에 직접 넣지 않습니다.</p></section>
+<section class="panel"><h2>3. PRODUCT Deployment·Service</h2><pre class="code-block">cat &gt; 30-product.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-deployment
+  namespace: apdev
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: {app: product}
+  template:
+    metadata:
+      labels: {app: product}
+    spec:
+      containers:
+        - name: product
+          image: &lt;ACCOUNT_ID&gt;.dkr.ecr.ap-northeast-2.amazonaws.com/product@sha256:&lt;PRODUCT_DIGEST&gt;
+          ports:
+            - {name: http, containerPort: 8080}
+          envFrom:
+            - configMapRef: {name: app-config}
+            - secretRef: {name: app-db-secret}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          startupProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: apdev
+spec:
+  type: ClusterIP
+  selector: {app: product}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+EOF</pre><p class="tip">11차시의 S3 접근은 Access Key 환경변수 대신 Pod용 IAM 권한을 연결합니다. 이 단계에서는 버킷 이름과 리전만 ConfigMap으로 전달합니다.</p></section>
+<section class="panel"><h2>4. STRESS Deployment·Service</h2><pre class="code-block">cat &gt; 40-stress.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stress-deployment
+  namespace: apdev
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: {app: stress}
+  template:
+    metadata:
+      labels: {app: stress}
+    spec:
+      containers:
+        - name: stress
+          image: &lt;ACCOUNT_ID&gt;.dkr.ecr.ap-northeast-2.amazonaws.com/stress@sha256:&lt;STRESS_DIGEST&gt;
+          ports:
+            - {name: http, containerPort: 8080}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          startupProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+            failureThreshold: 12
+          readinessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthcheck, port: http}
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stress-service
+  namespace: apdev
+spec:
+  type: ClusterIP
+  selector: {app: stress}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+EOF</pre><p class="tip">STRESS는 기능 확인 시 1회만 호출합니다. CPU 부하를 계속 발생시키는 반복 호출은 14차시 성능 측정 전까지 실행하지 않습니다.</p></section>
+<section class="panel"><h2>5. USER 설정을 공통 이름으로 갱신</h2><pre class="code-block"># 8차시 USER Deployment의 envFrom 참조를 공통 객체로 변경
+kubectl set env deployment/user-deployment \
+  --from=configmap/app-config
+kubectl set env deployment/user-deployment \
+  --from=secret/app-db-secret
+
+# USER 이미지도 검증한 digest인지 확인
+kubectl get deployment user-deployment \
+  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+
+# 필요하면 명시적으로 digest 고정
+kubectl set image deployment/user-deployment \
+  user=&lt;ACCOUNT_ID&gt;.dkr.ecr.ap-northeast-2.amazonaws.com/user@sha256:&lt;USER_DIGEST&gt;</pre><p class="tip"><code>kubectl set env --from</code>은 기존 환경변수에 값을 추가합니다. 이전 <code>user-config</code>, <code>user-db-secret</code> 참조를 완전히 제거하려면 8차시 USER YAML의 <code>envFrom</code>을 <code>app-config</code>, <code>app-db-secret</code>로 바꾸어 다시 적용하는 편이 가장 명확합니다.</p></section>
+<section class="panel"><h2>6. 세 애플리케이션 적용</h2><pre class="code-block">kubectl apply -f 10-user-deployment.yaml
+kubectl apply -f 20-user-service.yaml
+kubectl apply -f 30-product.yaml
+kubectl apply -f 40-stress.yaml
+
+for DEPLOY in user-deployment product-deployment stress-deployment; do
+  kubectl rollout status deployment/$DEPLOY --timeout=5m || exit 1
+done
+
+kubectl get deployment,replicaset,pod,service -o wide</pre><p class="tip">USER YAML의 ConfigMap·Secret 이름을 공통 객체로 수정한 다음 적용합니다. 하나라도 Rollout이 실패하면 다음 단계로 넘어가지 말고 해당 Deployment의 Pod Event와 로그를 확인합니다.</p></section>
+<section class="panel"><h2>7. 배포 상태 표로 확인</h2><pre class="code-block">kubectl get deployment \
+  -o custom-columns='NAME:.metadata.name,DESIRED:.spec.replicas,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas'
+
+kubectl get pod \
+  -o custom-columns='NAME:.metadata.name,APP:.metadata.labels.app,NODE:.spec.nodeName,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount'
+
+kubectl get service \
+  -o custom-columns='NAME:.metadata.name,TYPE:.spec.type,CLUSTER-IP:.spec.clusterIP,PORT:.spec.ports[0].port'</pre><div class="check-grid"><div class="check-item"><b>USER</b>Ready 2/2</div><div class="check-item"><b>PRODUCT</b>Ready 2/2</div><div class="check-item"><b>STRESS</b>Ready 1/1</div><div class="check-item"><b>Service</b>모두 ClusterIP :8080</div></div></section>
+<section class="panel"><h2>8. Label·Selector·Endpoint 검증</h2><pre class="code-block">for APP in user product stress; do
+  echo "===== $APP ====="
+  kubectl get deployment "$APP-deployment" \
+    -o jsonpath='deploy-selector={.spec.selector.matchLabels.app},pod-label={.spec.template.metadata.labels.app}'; echo
+  kubectl get service "$APP-service" \
+    -o jsonpath='service-selector={.spec.selector.app}'; echo
+  kubectl get endpoints "$APP-service"
+done</pre><p class="tip">세 출력의 앱 이름이 각각 일치해야 합니다. Endpoint가 <code>&lt;none&gt;</code>이면 label/selector 또는 readinessProbe를 확인합니다. USER·PRODUCT는 Ready Endpoint 2개, STRESS는 1개가 정상입니다.</p></section>
+<section class="panel"><h2>9. Cluster 내부 DNS·Healthcheck</h2><pre class="code-block">kubectl run api-check \
+  --image=curlimages/curl:8.10.1 \
+  --restart=Never --command -- sleep 3600
+kubectl wait --for=condition=Ready pod/api-check --timeout=2m
+
+for APP in user product stress; do
+  kubectl exec api-check -- \
+    curl -fsS -o /dev/null -w "$APP=%{http_code}\n" \
+    "http://$APP-service:8080/healthcheck"
+done</pre><p>기대 결과는 세 앱 모두 <code>200</code>입니다. 같은 Namespace에서는 <code>user-service</code>처럼 짧은 DNS 이름을 사용하고, 다른 Namespace에서는 <code>user-service.apdev.svc.cluster.local</code>을 사용합니다.</p></section>
+<section class="panel"><h2>10. 핵심 API Smoke Test</h2><pre class="code-block">export REQUEST_ID=999999999999
+export UUID=7c5a3c6a-758f-4bc5-9bdf-3e573a0ad729
+export EMAIL=dbdump500001@example.org
+
+kubectl exec api-check -- curl -fsS -G \
+  http://user-service:8080/v1/user \
+  --data-urlencode "email=$EMAIL" \
+  --data-urlencode "requestid=$REQUEST_ID" \
+  --data-urlencode "uuid=$UUID"
+
+kubectl exec api-check -- curl -fsS -G \
+  http://product-service:8080/v1/product \
+  --data-urlencode 'id=dbdump500001' \
+  --data-urlencode "requestid=$REQUEST_ID" \
+  --data-urlencode "uuid=$UUID"
+
+kubectl exec api-check -- curl -fsS -X POST \
+  http://stress-service:8080/v1/stress \
+  -H 'Content-Type: application/json' \
+  -d "{\"requestid\":\"$REQUEST_ID\",\"uuid\":\"$UUID\",\"length\":256}"</pre><p class="tip">STRESS는 1회만 실행합니다. USER·PRODUCT 조회가 실패하면 앱 로그와 RDS SG, dump 데이터 존재 여부를 순서대로 확인합니다.</p></section>
+<section class="panel"><h2>11. 로그·재시작·리소스 확인</h2><pre class="code-block">for APP in user product stress; do
+  echo "===== $APP logs ====="
+  kubectl logs -l app=$APP \
+    --all-containers --tail=30 --prefix
+  kubectl get pod -l app=$APP \
+    -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount'
+done
+
+kubectl top pod
+kubectl top node
+kubectl get events --sort-by='.lastTimestamp' | tail -30</pre><p>정상 요청 직후 로그에 치명적인 DB 오류, S3 권한 오류, Probe 실패 또는 반복 재시작이 없어야 합니다. CPU·메모리 측정값은 15차시 튜닝 기준값으로 기록합니다.</p></section>
+<section class="panel"><h2>12. 앱별 Rollout 개별 제어</h2><pre class="code-block"># PRODUCT만 새 digest로 변경
+kubectl set image deployment/product-deployment \
+  product=&lt;ACCOUNT_ID&gt;.dkr.ecr.ap-northeast-2.amazonaws.com/product@sha256:&lt;NEW_PRODUCT_DIGEST&gt;
+kubectl rollout status deployment/product-deployment --timeout=5m
+
+# 다른 두 Deployment가 변경되지 않았는지 확인
+kubectl rollout history deployment/user-deployment
+kubectl rollout history deployment/product-deployment
+kubectl rollout history deployment/stress-deployment
+
+# 문제 발생 시 PRODUCT만 복구
+kubectl rollout undo deployment/product-deployment</pre><p class="tip">앱별 Deployment를 분리했기 때문에 PRODUCT 배포 실패가 USER·STRESS의 revision을 변경하지 않습니다.</p></section>
+<section class="panel"><h2>13. 오류별 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>증상</th><th>범위</th><th>확인·조치</th></tr></thead><tbody>
+<tr><td>세 앱 모두 <code>ImagePullBackOff</code></td><td>공통 Node Role·ECR 경로</td><td>Node IAM Policy, NAT/VPC Endpoint 확인</td></tr>
+<tr><td>한 앱만 <code>ImagePullBackOff</code></td><td>해당 ECR URI·digest</td><td>Deployment image와 ECR digest 비교</td></tr>
+<tr><td>USER·PRODUCT만 DB timeout</td><td>RDS SG·Endpoint·Secret</td><td>3306 Source와 공통 설정 확인</td></tr>
+<tr><td>PRODUCT만 S3 AccessDenied</td><td>Pod IAM·Bucket Policy</td><td>11차시 IAM 권한과 버킷 이름 확인</td></tr>
+<tr><td>Service Endpoint 없음</td><td>selector·label·Probe</td><td>Endpoint와 Pod Ready 상태 비교</td></tr>
+<tr><td>Pod <code>Pending</code></td><td>Node 자원·Subnet IP</td><td>Events, requests, Node/IP 여유 확인</td></tr>
+<tr><td>STRESS 후 재시작 증가</td><td>CPU·Memory limit 또는 liveness</td><td>반복 부하 중단 후 describe·previous log 확인</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>14. 임시 리소스 정리와 최종 검증</h2><pre class="code-block">kubectl delete pod api-check
+
+for APP in user product stress; do
+  kubectl rollout status deployment/$APP-deployment --timeout=2m
+  kubectl get endpoints $APP-service
+  kubectl get deployment $APP-deployment \
+    -o jsonpath='{.metadata.name}: ready={.status.readyReplicas}/{.spec.replicas}, image={.spec.template.spec.containers[0].image}'; echo
+done
+
+kubectl get pod,service -o wide</pre></section>
+<section class="panel"><h2>10차시 전달 체크리스트</h2><ul><li>USER·PRODUCT·STRESS가 각각 별도 Deployment와 ClusterIP Service로 배포됐습니다.</li><li>USER 2개, PRODUCT 2개, STRESS 1개 Pod가 모두 Ready입니다.</li><li>각 Service selector와 Pod label이 일치하고 Ready Endpoint가 등록됩니다.</li><li>세 앱의 <code>/healthcheck</code>가 Cluster 내부 DNS로 200을 반환합니다.</li><li>USER·PRODUCT의 RDS 조회와 STRESS 단일 요청이 성공합니다.</li><li>세 이미지는 검증한 ECR digest로 고정됐습니다.</li><li>비밀번호와 AWS Access Key가 Deployment YAML이나 이미지에 없습니다.</li><li>임시 <code>api-check</code> Pod와 반복 STRESS 요청을 정리했습니다.</li><li>10차시 Ingress가 연결할 Service 이름과 포트가 확정됐습니다.</li></ul><p>공식 참고: <a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/">Deployment</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/service/">Service</a>, <a href="https://kubernetes.io/docs/concepts/configuration/configmap/">ConfigMap</a>, <a href="https://kubernetes.io/docs/concepts/configuration/secret/">Secret</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/">Service DNS</a></p></section>`;}if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
 </script></body></html>
