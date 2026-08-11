@@ -366,5 +366,132 @@ done</pre><div class="table-wrap"><table class="network-table"><thead><tr><th>�
 <tr><td>이미지가 너무 큼</td><td>불필요한 파일·패키지 포함</td><td><code>docker history</code>와 빌드 컨텍스트 점검</td></tr>
 </tbody></table></div></section>
 <section class="panel"><h2>ECR 전달 전 완료 기준</h2><ul><li>세 이미지의 OS/Architecture가 <code>linux/amd64</code>입니다.</li><li>세 컨테이너 모두 비루트 UID 10001로 실행됩니다.</li><li>healthcheck와 핵심 API가 4차시 결과와 동일합니다.</li><li><code>docker logs</code>에서 access log를 볼 수 있습니다.</li><li>이미지 history, config, layer에 DB·AWS 비밀정보가 없습니다.</li><li>테스트 컨테이너를 모두 종료했으며 불필요한 이미지 복제본이 없습니다.</li><li>Commit SHA 태그를 기록해 6차시 ECR push에 사용할 준비가 됐습니다.</li></ul></section>`;}
+if(n===6){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>ECR 실습 목표</h2><p>5차시의 USER·PRODUCT·STRESS 이미지를 서울 리전의 Private ECR에 저장하고, 태그가 아닌 digest까지 검증해 7~9차시 EKS 배포에 사용할 이미지 주소를 확정합니다.</p><div class="check-grid"><div class="check-item"><b>Repository</b>앱별 1개, 총 3개</div><div class="check-item"><b>Security</b>Immutable tag, scan on push</div><div class="check-item"><b>Traceability</b>Commit SHA와 digest 기록</div><div class="check-item"><b>EKS Pull</b>Node role에 PullOnly 권한</div></div></section>
+<section class="panel"><h2>권장 저장소 계획</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>애플리케이션</th><th>Repository</th><th>로컬 이미지</th><th>배포 태그</th></tr></thead><tbody>
+<tr><td>USER</td><td><code>apdev/user</code></td><td><code>user:local</code></td><td>Commit SHA</td></tr>
+<tr><td>PRODUCT</td><td><code>apdev/product</code></td><td><code>product:local</code></td><td>Commit SHA</td></tr>
+<tr><td>STRESS</td><td><code>apdev/stress</code></td><td><code>stress:local</code></td><td>Commit SHA</td></tr>
+</tbody></table></div><p class="tip">저장소 이름은 대회에서 고정하지 않았지만 소문자와 동일한 namespace를 사용하면 관리가 쉽습니다. 필요하지 않은 추가 저장소를 만들지 않습니다.</p></section>
+<section class="panel"><h2>권한 분리</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>주체</th><th>필요 권한</th><th>금지 사항</th></tr></thead><tbody>
+<tr><td>빌드·Push EC2 Role</td><td>ECR 인증과 <code>apdev/*</code> upload 권한</td><td>개인 Access Key를 파일에 저장</td></tr>
+<tr><td>EKS Node Role</td><td><code>AmazonEC2ContainerRegistryPullOnly</code></td><td>Push·Delete 권한 부여</td></tr>
+<tr><td>Pod</td><td>이미지 pull 권한 불필요</td><td>ECR 권한을 앱 ServiceAccount에 중복 부여</td></tr>
+</tbody></table></div><p class="tip">ECR에서 이미지를 가져오는 주체는 일반적으로 kubelet이 실행되는 Worker Node입니다. AWS 공식 EKS 문서는 Node IAM Role에 <code>AmazonEC2ContainerRegistryPullOnly</code> 또는 동등한 최소 권한을 요구합니다.</p></section>
+<section class="panel"><h2>AWS CLI 사전 확인</h2><pre class="code-block">export AWS_REGION=ap-northeast-2
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export REGISTRY=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+aws sts get-caller-identity
+aws configure get region
+echo "REGISTRY=$REGISTRY"
+
+docker image inspect user:local    --format '{{.Os}}/{{.Architecture}}'
+docker image inspect product:local --format '{{.Os}}/{{.Architecture}}'
+docker image inspect stress:local  --format '{{.Os}}/{{.Architecture}}'</pre><p class="tip">세 이미지 모두 <code>linux/amd64</code>여야 합니다. 계정 ID와 리전을 직접 하드코딩하지 않고 STS와 환경변수로 얻습니다.</p></section>
+<section class="panel"><h2>Private Repository 3개 생성</h2><pre class="code-block">for repo in apdev/user apdev/product apdev/stress; do
+  aws ecr create-repository \
+    --repository-name "$repo" \
+    --region "$AWS_REGION" \
+    --image-tag-mutability IMMUTABLE \
+    --image-scanning-configuration scanOnPush=true \
+    --encryption-configuration encryptionType=AES256 \
+    --tags Key=Project,Value=apdev Key=ManagedBy,Value=student
+done
+
+aws ecr describe-repositories \
+  --repository-names apdev/user apdev/product apdev/stress \
+  --region "$AWS_REGION" \
+  --query 'repositories[].{name:repositoryName,uri:repositoryUri,immutable:imageTagMutability,scan:imageScanningConfiguration.scanOnPush}' \
+  --output table</pre><p class="tip">현재 AWS CLI는 <code>MUTABLE</code>, <code>IMMUTABLE</code>과 exclusion 방식도 지원합니다. 이 실습은 배포 태그 덮어쓰기를 막기 위해 단순한 <code>IMMUTABLE</code>을 사용합니다.</p></section>
+<section class="panel"><h2>Docker를 ECR에 인증</h2><pre class="code-block">aws ecr get-login-password --region "$AWS_REGION" | \
+  docker login --username AWS --password-stdin "$REGISTRY"
+
+docker system info | grep -i registry || true</pre><p class="tip">Private ECR 인증 토큰은 제한된 시간 동안만 유효하므로 인증 오류가 나면 명령을 다시 실행합니다. <code>aws ecr get-login</code>의 결과를 복사하거나 비밀번호를 명령행에 직접 노출하지 않습니다.</p></section>
+<section class="panel"><h2>Commit SHA 태그와 Push</h2><pre class="code-block">IMAGE_TAG=$(git rev-parse --short HEAD 2&gt;/dev/null || date +%Y%m%d%H%M%S)
+
+echo "IMAGE_TAG=$IMAGE_TAG"
+for app in user product stress; do
+  ECR_IMAGE=$REGISTRY/apdev/$app:$IMAGE_TAG
+  docker tag "$app:local" "$ECR_IMAGE"
+  docker push "$ECR_IMAGE"
+done</pre><p class="tip"><code>IMMUTABLE</code> 저장소에 같은 태그를 다시 push하면 실패하는 것이 정상입니다. 바이너리나 Dockerfile이 변경되면 새 Commit SHA 태그를 사용합니다.</p></section>
+<section class="panel"><h2>Push 결과와 Digest 검증</h2><pre class="code-block">for repo in apdev/user apdev/product apdev/stress; do
+  aws ecr describe-images \
+    --repository-name "$repo" \
+    --image-ids imageTag="$IMAGE_TAG" \
+    --region "$AWS_REGION" \
+    --query 'imageDetails[0].{tags:imageTags,digest:imageDigest,size:imageSizeInBytes,pushed:imagePushedAt}' \
+    --output table
+done
+
+# 배포 기록 파일 생성
+: &gt; ~/app-test/ecr-images.txt
+for app in user product stress; do
+  DIGEST=$(aws ecr describe-images \
+    --repository-name "apdev/$app" \
+    --image-ids imageTag="$IMAGE_TAG" \
+    --query 'imageDetails[0].imageDigest' --output text \
+    --region "$AWS_REGION")
+  echo "$app=$REGISTRY/apdev/$app@$DIGEST" | tee -a ~/app-test/ecr-images.txt
+done</pre><p class="tip">태그는 사람이 읽기 쉽지만 digest는 이미지 내용을 고정합니다. 운영 Deployment에는 <code>repository@sha256:...</code> 형식을 사용하면 같은 이미지임을 확실히 보장할 수 있습니다.</p></section>
+<section class="panel"><h2>Pull 재검증</h2><pre class="code-block"># 로컬 태그를 지운 뒤 ECR에서 다시 받아 전송 경로 확인
+for app in user product stress; do
+  docker image rm "$REGISTRY/apdev/$app:$IMAGE_TAG" || true
+  docker pull --platform linux/amd64 "$REGISTRY/apdev/$app:$IMAGE_TAG"
+  docker image inspect "$REGISTRY/apdev/$app:$IMAGE_TAG" \
+    --format '{{.RepoDigests}} os={{.Os}} arch={{.Architecture}}'
+done</pre><p class="tip">로컬에 남은 이미지 때문에 pull 검증을 건너뛰지 않도록 ECR 태그만 제거한 뒤 다시 받습니다. <code>user:local</code> 같은 원본 태그는 삭제할 필요가 없습니다.</p></section>
+<section class="panel"><h2>Image Scan 결과 확인</h2><pre class="code-block">for repo in apdev/user apdev/product apdev/stress; do
+  echo "=== $repo ==="
+  aws ecr describe-image-scan-findings \
+    --repository-name "$repo" \
+    --image-id imageTag="$IMAGE_TAG" \
+    --region "$AWS_REGION" \
+    --query '{status:imageScanStatus.status,severity:imageScanFindings.findingSeverityCounts}' \
+    --output table
+done</pre><div class="table-wrap"><table class="network-table"><thead><tr><th>결과</th><th>조치</th></tr></thead><tbody><tr><td>COMPLETE, 치명적 취약점 없음</td><td>digest를 배포 후보로 기록</td></tr><tr><td>IN_PROGRESS</td><td>잠시 후 다시 조회</td></tr><tr><td>HIGH/CRITICAL 발견</td><td>Base image 업데이트 후 새 태그로 재빌드</td></tr><tr><td>UNSUPPORTED_IMAGE</td><td>Manifest와 OS/Architecture 확인</td></tr></tbody></table></div></section>
+<section class="panel"><h2>Lifecycle Policy</h2><p>실습 중 생기는 untagged 이미지가 무한히 쌓이지 않도록 각 저장소에서 최신 1개만 유지하는 정책 예시입니다. 적용 전 preview로 삭제 대상을 확인하세요.</p><pre class="code-block">cat &gt; /tmp/ecr-lifecycle.json &lt;&lt;'EOF'
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "Keep one untagged image",
+      "selection": {
+        "tagStatus": "untagged",
+        "countType": "imageCountMoreThan",
+        "countNumber": 1
+      },
+      "action": { "type": "expire" }
+    }
+  ]
+}
+EOF
+
+for repo in apdev/user apdev/product apdev/stress; do
+  aws ecr put-lifecycle-policy \
+    --repository-name "$repo" \
+    --lifecycle-policy-text file:///tmp/ecr-lifecycle.json \
+    --region "$AWS_REGION"
+done</pre><p class="tip">ECR lifecycle action은 즉시 실행되지 않을 수 있습니다. 태그된 배포 이미지를 삭제하는 공격적인 정책은 대회 중 사용하지 않습니다.</p></section>
+<section class="panel"><h2>EKS Node Role Pull 권한 확인</h2><pre class="code-block">NODE_ROLE_NAME=&lt;EKS_NODE_ROLE_NAME&gt;
+
+aws iam list-attached-role-policies \
+  --role-name "$NODE_ROLE_NAME" \
+  --query 'AttachedPolicies[].PolicyArn' \
+  --output text | tr '\t' '\n' | \
+  grep AmazonEC2ContainerRegistryPullOnly</pre><p>정책이 없다면 Node Role에 연결합니다.</p><pre class="code-block">aws iam attach-role-policy \
+  --role-name "$NODE_ROLE_NAME" \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly</pre><p class="tip">예전 구성에서 사용하던 더 넓은 ReadOnly 정책보다 현재 공식 문서의 PullOnly 정책을 우선합니다. Node Role에는 push 권한이 필요하지 않습니다.</p></section>
+<section class="panel"><h2>Private Subnet의 ECR 통신</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>방식</th><th>필요 구성</th><th>선택 기준</th></tr></thead><tbody><tr><td>기존 NAT 경로</td><td>Private App Route → NAT, HTTPS 443</td><td>2차시 NAT를 이미 운영할 때 단순</td></tr><tr><td>VPC Endpoint</td><td>ECR API·ECR DKR Interface + S3 Gateway</td><td>인터넷 경로를 피할 때, Endpoint 비용 고려</td></tr></tbody></table></div><p class="tip">두 방식을 이유 없이 동시에 추가하지 않습니다. 대회 비용과 기존 네트워크 구성을 보고 하나를 선택하고, Worker Node에서 ECR HTTPS 443 및 이미지 layer를 위한 S3 경로가 열려 있어야 합니다.</p></section>
+<section class="panel"><h2>오류별 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>증상</th><th>주요 원인</th><th>확인·해결</th></tr></thead><tbody>
+<tr><td>no basic auth credentials</td><td>로그인 누락·토큰 만료</td><td><code>get-login-password</code> 재실행</td></tr>
+<tr><td>repository does not exist</td><td>이름·리전·계정 불일치</td><td>REGISTRY와 <code>describe-repositories</code> 확인</td></tr>
+<tr><td>tag already exists</td><td>Immutable 태그 재사용</td><td>새 Commit SHA 태그 사용</td></tr>
+<tr><td>denied: not authorized</td><td>Push Role 권한 부족</td><td>ECR upload action과 repository ARN 확인</td></tr>
+<tr><td>ImagePullBackOff</td><td>Node Role 또는 NAT/Endpoint 문제</td><td>Pod Event, PullOnly 정책, HTTPS 경로 확인</td></tr>
+<tr><td>manifest does not match</td><td>Architecture 불일치</td><td><code>linux/amd64</code>로 재빌드</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>7차시 전달 체크리스트</h2><ul><li>서울 리전에 ECR Private Repository가 정확히 3개 있습니다.</li><li>세 저장소는 Immutable tag와 scan on push가 활성화되어 있습니다.</li><li>USER·PRODUCT·STRESS 이미지의 Commit SHA 태그와 digest를 기록했습니다.</li><li>이미지를 삭제한 뒤 ECR에서 pull하여 <code>linux/amd64</code>를 재확인했습니다.</li><li>치명적 스캔 결과를 확인하고 필요한 경우 새 이미지로 교체했습니다.</li><li>EKS Node Role에 <code>AmazonEC2ContainerRegistryPullOnly</code>가 있습니다.</li><li>Private App Subnet에서 ECR/S3로 나가는 경로가 하나만 명확히 구성됐습니다.</li><li>불필요한 repository와 중복 태그를 만들지 않았습니다.</li></ul><p>공식 참고: <a href="https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-create.html">ECR repository 생성</a>, <a href="https://docs.aws.amazon.com/AmazonECR/latest/userguide/example_ecr_GettingStarted_078_section.html">ECR 인증·Push</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html">EKS Node IAM Role</a></p></section>`;}
 if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
 </script></body></html>
