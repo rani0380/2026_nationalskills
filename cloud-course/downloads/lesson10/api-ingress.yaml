@@ -1,0 +1,42 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: apdev
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/success-codes: "200"
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /v1/user
+            pathType: Prefix
+            backend:
+              service:
+                name: user-service
+                port: {number: 8080}
+          - path: /v1/product
+            pathType: Prefix
+            backend:
+              service:
+                name: product-service
+                port: {number: 8080}
+          - path: /v1/stress
+            pathType: Prefix
+            backend:
+              service:
+                name: stress-service
+                port: {number: 8080}
+          - path: /healthcheck
+            pathType: Exact
+            backend:
+              service:
+                name: user-service
+                port: {number: 8080}
