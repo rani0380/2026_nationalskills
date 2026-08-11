@@ -80,7 +80,71 @@ rds-sg → apdev-rds-instance → dev
                                 ├─ user
                                 └─ product</div><p class="tip">DB Subnet Group에는 2차시에서 만든 <code>db-a</code>(ap-northeast-2a)와 <code>db-c</code>(ap-northeast-2c)만 넣습니다. RDS Security Group의 3306 Inbound Source는 IP 대역이 아니라 <code>eks-node-sg</code>로 지정합니다.</p></section>
 <section class="panel"><h2>AWS 콘솔 생성 순서</h2><ol><li>RDS → Subnet groups에서 <code>apdev-db-subnet-group</code>을 만들고 <code>db-a</code>, <code>db-c</code>를 선택합니다.</li><li>Security Group <code>rds-sg</code>를 만들고 TCP 3306 Source를 <code>eks-node-sg</code>로 제한합니다.</li><li>RDS → Create database → Standard create → MySQL을 선택합니다.</li><li>위 지정 구성표대로 identifier, Multi-AZ, db.t3.micro, gp3, dev를 입력합니다.</li><li>Connectivity에서 실습 VPC, DB Subnet Group, <strong>Public access No</strong>, <code>rds-sg</code>를 선택합니다.</li><li>생성 완료 후 Connectivity & security에서 RDS endpoint와 포트 3306을 기록합니다.</li></ol></section>
-<section class="panel"><h2>데이터베이스와 애플리케이션 계정 생성</h2><p>RDS Master 계정으로 접속한 뒤 애플리케이션 전용 계정을 만듭니다. 비밀번호는 예시 문자열을 그대로 사용하지 말고 안전한 값으로 바꾸세요.</p><pre class="code-block">mysql -h &lt;RDS_ENDPOINT&gt; -P 3306 -u &lt;MASTER_USER&gt; -p
+<section class="panel"><h2>EC2 접속 실습 구성</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>항목</th><th>설정</th><th>확인 사항</th></tr></thead><tbody>
+<tr><td>EC2 위치</td><td><code>private-a</code> 또는 <code>private-c</code></td><td>RDS와 동일한 VPC 사용</td></tr>
+<tr><td>EC2 Security Group</td><td><code>ec2-test-sg</code></td><td>Outbound TCP 3306 허용</td></tr>
+<tr><td>RDS Security Group</td><td><code>rds-sg</code></td><td>Inbound TCP 3306 Source = <code>ec2-test-sg</code></td></tr>
+<tr><td>EC2 접속</td><td>Systems Manager Session Manager 권장</td><td>Public IP와 SSH 22 개방 없이 접속</td></tr>
+<tr><td>이름 확인</td><td>VPC DNS support/hostnames 활성화</td><td>RDS Endpoint를 DNS로 해석</td></tr>
+</tbody></table></div><div class="diagram">관리자 → Session Manager → EC2 실습 서버
+                              │ TCP 3306
+                              ▼
+                    rds-sg → RDS MySQL</div><p class="tip">RDS를 Public access로 변경하거나 <code>0.0.0.0/0</code>에서 3306을 허용하지 않습니다. RDS Inbound Source에는 EC2의 IP가 아니라 <code>ec2-test-sg</code>의 Security Group ID를 지정합니다.</p></section>
+<section class="panel"><h2>1. EC2에서 RDS Endpoint 확인</h2><p>Session Manager 또는 허용된 SSH 방식으로 EC2에 접속한 후 다음 명령을 실행합니다.</p><pre class="code-block">export AWS_REGION=ap-northeast-2
+export DB_ID=apdev-rds-instance
+
+export RDS_ENDPOINT=$(aws rds describe-db-instances \
+  --region "$AWS_REGION" \
+  --db-instance-identifier "$DB_ID" \
+  --query 'DBInstances[0].Endpoint.Address' \
+  --output text)
+export RDS_PORT=$(aws rds describe-db-instances \
+  --region "$AWS_REGION" \
+  --db-instance-identifier "$DB_ID" \
+  --query 'DBInstances[0].Endpoint.Port' \
+  --output text)
+
+printf 'endpoint=%s\nport=%s\n' "$RDS_ENDPOINT" "$RDS_PORT"
+getent hosts "$RDS_ENDPOINT"</pre><p class="tip">EC2 Role에 RDS 조회 권한이 없다면 RDS 콘솔의 Connectivity &amp; security에서 Endpoint와 Port를 복사하여 직접 <code>RDS_ENDPOINT</code>, <code>RDS_PORT</code> 변수에 넣어도 됩니다. Endpoint 앞에 <code>mysql://</code>을 붙이지 않습니다.</p></section>
+<section class="panel"><h2>2. MySQL Client 설치</h2><pre class="code-block"># Amazon Linux 2023
+sudo dnf install -y mariadb105
+
+# Ubuntu를 사용한 경우
+# sudo apt-get update
+# sudo apt-get install -y mysql-client
+
+mysql --version</pre><p class="tip">EC2가 Private Subnet에 있다면 패키지 설치를 위해 NAT Gateway 또는 필요한 저장소용 VPC Endpoint 경로가 필요합니다. 설치가 끝난 실습 AMI를 사용하면 대회 중 시간을 줄일 수 있습니다.</p></section>
+<section class="panel"><h2>3. DNS·포트 연결 확인</h2><pre class="code-block"># DNS가 사설 IP로 해석되는지 확인
+getent ahostsv4 "$RDS_ENDPOINT"
+
+# TCP 3306 연결 확인: 둘 중 설치된 명령 사용
+nc -vz -w 5 "$RDS_ENDPOINT" "$RDS_PORT"
+# timeout 5 bash -c "&lt;/dev/tcp/$RDS_ENDPOINT/$RDS_PORT" &amp;&amp; echo CONNECTED</pre><div class="check-grid"><div class="check-item"><b>DNS 성공 + TCP 성공</b>MySQL 로그인 단계로 이동</div><div class="check-item"><b>DNS 실패</b>Endpoint 오타와 VPC DNS 확인</div><div class="check-item"><b>TCP Timeout</b>RDS 상태·SG·NACL·VPC 확인</div><div class="check-item"><b>Connection refused</b>Endpoint·Port와 RDS 상태 확인</div></div></section>
+<section class="panel"><h2>4. Master 계정으로 MySQL 접속</h2><pre class="code-block">mysql \
+  --host="$RDS_ENDPOINT" \
+  --port="$RDS_PORT" \
+  --user=&lt;MASTER_USER&gt; \
+  --password \
+  --connect-timeout=5</pre><p><code>Enter password:</code>가 표시되면 RDS 생성 시 지정한 Master password를 입력합니다. 비밀번호를 명령행에 직접 쓰지 않습니다.</p><pre class="code-block">SELECT VERSION();
+SELECT CURRENT_USER();
+SHOW DATABASES;
+USE dev;
+SELECT DATABASE();
+EXIT;</pre><p class="tip">MySQL 프롬프트가 나타나고 <code>SELECT DATABASE()</code> 결과가 <code>dev</code>이면 EC2 → RDS 네트워크와 인증이 모두 정상입니다.</p></section>
+<section class="panel"><h2>5. 한 번에 접속 검증</h2><pre class="code-block">mysql \
+  -h "$RDS_ENDPOINT" \
+  -P "$RDS_PORT" \
+  -u &lt;MASTER_USER&gt; \
+  -p \
+  -D dev \
+  -e "SELECT NOW() AS db_time, DATABASE() AS db_name, CURRENT_USER() AS login_user;"</pre><p>명령이 성공하면 출력 결과와 RDS Endpoint를 채점 증빙으로 기록한 뒤 아래 단계에서 <code>appuser</code>와 테이블을 생성합니다.</p></section>
+<section class="panel"><h2>EC2 → RDS 접속 오류 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>증상</th><th>주요 원인</th><th>확인·조치</th></tr></thead><tbody>
+<tr><td><code>Unknown MySQL server host</code></td><td>Endpoint 오타 또는 DNS 비활성</td><td><code>getent hosts</code>, VPC DNS 설정 확인</td></tr>
+<tr><td><code>Connection timed out</code></td><td>RDS SG Source 오류, 다른 VPC, NACL 차단</td><td>3306 Source가 <code>ec2-test-sg</code>인지 확인</td></tr>
+<tr><td><code>Access denied</code></td><td>사용자명·비밀번호·권한 오류</td><td>Master username과 Secret 값을 재확인</td></tr>
+<tr><td><code>Unknown database 'dev'</code></td><td>초기 DB가 생성되지 않음</td><td>Master 계정으로 <code>CREATE DATABASE dev</code> 실행</td></tr>
+<tr><td>AWS CLI <code>AccessDenied</code></td><td>EC2 Role에 RDS 조회 권한 없음</td><td>콘솔에서 Endpoint 복사 또는 최소 조회 권한 부여</td></tr>
+</tbody></table></div></section><section class="panel"><h2>데이터베이스와 애플리케이션 계정 생성</h2><p>RDS Master 계정으로 접속한 뒤 애플리케이션 전용 계정을 만듭니다. 비밀번호는 예시 문자열을 그대로 사용하지 말고 안전한 값으로 바꾸세요.</p><pre class="code-block">mysql -h &lt;RDS_ENDPOINT&gt; -P 3306 -u &lt;MASTER_USER&gt; -p
 
 CREATE DATABASE IF NOT EXISTS dev
   CHARACTER SET utf8mb4
