@@ -493,5 +493,193 @@ aws iam list-attached-role-policies \
 <tr><td>manifest does not match</td><td>Architecture 불일치</td><td><code>linux/amd64</code>로 재빌드</td></tr>
 </tbody></table></div></section>
 <section class="panel"><h2>7차시 전달 체크리스트</h2><ul><li>서울 리전에 ECR Private Repository가 정확히 3개 있습니다.</li><li>세 저장소는 Immutable tag와 scan on push가 활성화되어 있습니다.</li><li>USER·PRODUCT·STRESS 이미지의 Commit SHA 태그와 digest를 기록했습니다.</li><li>이미지를 삭제한 뒤 ECR에서 pull하여 <code>linux/amd64</code>를 재확인했습니다.</li><li>치명적 스캔 결과를 확인하고 필요한 경우 새 이미지로 교체했습니다.</li><li>EKS Node Role에 <code>AmazonEC2ContainerRegistryPullOnly</code>가 있습니다.</li><li>Private App Subnet에서 ECR/S3로 나가는 경로가 하나만 명확히 구성됐습니다.</li><li>불필요한 repository와 중복 태그를 만들지 않았습니다.</li></ul><p>공식 참고: <a href="https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-create.html">ECR repository 생성</a>, <a href="https://docs.aws.amazon.com/AmazonECR/latest/userguide/example_ecr_GettingStarted_078_section.html">ECR 인증·Push</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html">EKS Node IAM Role</a></p></section>`;}
+if(n===7){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>구축 목표와 고정 조건</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>항목</th><th>실습 설정</th><th>이유</th></tr></thead><tbody>
+<tr><td>Cluster name</td><td><code>apdev-eks-cluster</code></td><td>일관된 리소스 식별</td></tr>
+<tr><td>Region</td><td><code>ap-northeast-2</code></td><td>대회 지정 서울 리전</td></tr>
+<tr><td>Compute</td><td>EC2 Managed Node Group</td><td>Fargate·Lambda 금지 조건</td></tr>
+<tr><td>Instance type</td><td><code>t3.medium</code>만 사용</td><td>대회 지정 타입</td></tr>
+<tr><td>Node AMI</td><td><code>AL2023_x86_64_STANDARD</code></td><td>Linux amd64 이미지와 호환</td></tr>
+<tr><td>Node subnets</td><td><code>private-a</code>, <code>private-c</code></td><td>2개 AZ 가용성과 비공개 배치</td></tr>
+<tr><td>Capacity</td><td>On-Demand, desired 2</td><td>AZ 장애를 고려한 최소 시작점</td></tr>
+<tr><td>Endpoint</td><td>Private 활성 + Public 제한</td><td>Node 내부 통신과 운영자 접근</td></tr>
+</tbody></table></div><p class="tip">EKS 제어 영역은 AWS가 관리하며 EC2 인스턴스로 보이지 않습니다. 과제의 t3.medium 제한은 Worker Node에 적용합니다. EKS Auto Mode와 Fargate Profile은 사용하지 않습니다.</p></section>
+<section class="panel"><h2>사전 변수와 도구 확인</h2><pre class="code-block">export AWS_REGION=ap-northeast-2
+export CLUSTER_NAME=apdev-eks-cluster
+export NODEGROUP_NAME=apdev-nodegroup
+export K8S_VERSION=&lt;SUPPORTED_EKS_VERSION&gt;   # EKS 콘솔에서 현재 지원 버전 확인
+export PRIVATE_A_SUBNET=&lt;private-a-subnet-id&gt;
+export PRIVATE_C_SUBNET=&lt;private-c-subnet-id&gt;
+export MY_PUBLIC_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+aws --version
+kubectl version --client
+aws sts get-caller-identity
+printf 'operator CIDR: %s/32\n' "$MY_PUBLIC_IP"</pre><p class="tip">AWS 공식 문서는 클러스터 생성 시 현재 EKS가 지원하는 Kubernetes 버전을 선택하도록 안내합니다. 특정 버전을 오래 하드코딩하지 말고 생성 직전 EKS 콘솔의 지원 목록을 확인합니다.</p></section>
+<section class="panel"><h2>Subnet 확인과 태그</h2><pre class="code-block">aws ec2 describe-subnets \
+  --subnet-ids "$PRIVATE_A_SUBNET" "$PRIVATE_C_SUBNET" \
+  --query 'Subnets[].{id:SubnetId,az:AvailabilityZone,cidr:CidrBlock,free:AvailableIpAddressCount}' \
+  --output table
+
+# 10차시 ALB Controller가 Subnet 용도를 찾을 수 있도록 태그 지정
+aws ec2 create-tags \
+  --resources &lt;public-a-subnet-id&gt; &lt;public-c-subnet-id&gt; \
+  --tags Key=kubernetes.io/role/elb,Value=1
+aws ec2 create-tags \
+  --resources "$PRIVATE_A_SUBNET" "$PRIVATE_C_SUBNET" \
+  --tags Key=kubernetes.io/role/internal-elb,Value=1</pre><div class="check-grid"><div class="check-item"><b>private-a</b>ap-northeast-2a / 10.0.3.0/24</div><div class="check-item"><b>private-c</b>ap-northeast-2c / 10.0.4.0/24</div><div class="check-item"><b>Outbound</b>NAT 또는 필요한 VPC Endpoint</div><div class="check-item"><b>DNS</b>VPC support/hostnames 활성화</div></div></section>
+<section class="panel"><h2>Cluster IAM Role 생성</h2><pre class="code-block">cat &gt; /tmp/eks-cluster-trust.json &lt;&lt;'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Service": "eks.amazonaws.com"},
+    "Action": "sts:AssumeRole"
+  }]
+}
+EOF
+
+aws iam create-role \
+  --role-name apdev-eks-cluster-role \
+  --assume-role-policy-document file:///tmp/eks-cluster-trust.json
+
+aws iam attach-role-policy \
+  --role-name apdev-eks-cluster-role \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+export CLUSTER_ROLE_ARN=$(aws iam get-role \
+  --role-name apdev-eks-cluster-role \
+  --query 'Role.Arn' --output text)</pre><p class="tip">Cluster Role의 신뢰 주체는 <code>eks.amazonaws.com</code>입니다. Node Role과 Cluster Role을 하나로 합치지 않습니다.</p></section>
+<section class="panel"><h2>Node IAM Role 생성</h2><pre class="code-block">cat &gt; /tmp/eks-node-trust.json &lt;&lt;'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Service": "ec2.amazonaws.com"},
+    "Action": "sts:AssumeRole"
+  }]
+}
+EOF
+
+aws iam create-role \
+  --role-name apdev-eks-node-role \
+  --assume-role-policy-document file:///tmp/eks-node-trust.json
+
+aws iam attach-role-policy \
+  --role-name apdev-eks-node-role \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+aws iam attach-role-policy \
+  --role-name apdev-eks-node-role \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly
+
+# 단순 실습 구성: CNI 권한을 Node Role에 연결
+# 운영 환경에서는 VPC CNI 전용 Pod Identity/IRSA Role 권장
+aws iam attach-role-policy \
+  --role-name apdev-eks-node-role \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+
+export NODE_ROLE_ARN=$(aws iam get-role \
+  --role-name apdev-eks-node-role \
+  --query 'Role.Arn' --output text)</pre><p class="tip">현재 AWS 공식 문서는 Node Role에 <code>AmazonEKSWorkerNodePolicy</code>와 <code>AmazonEC2ContainerRegistryPullOnly</code> 또는 동등한 최소 권한을 요구합니다. CNI 권한은 별도 Pod Identity/IRSA Role이 권장되지만 제한시간 실습에서는 Node Role 연결 후 나중에 분리할 수 있습니다.</p></section>
+<section class="panel"><h2>EKS Cluster 생성</h2><pre class="code-block">aws eks create-cluster \
+  --name "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --kubernetes-version "$K8S_VERSION" \
+  --role-arn "$CLUSTER_ROLE_ARN" \
+  --resources-vpc-config "subnetIds=$PRIVATE_A_SUBNET,$PRIVATE_C_SUBNET,endpointPrivateAccess=true,endpointPublicAccess=true,publicAccessCidrs=$MY_PUBLIC_IP/32" \
+  --tags Project=apdev,ManagedBy=student
+
+aws eks wait cluster-active \
+  --name "$CLUSTER_NAME" \
+  --region "$AWS_REGION"
+
+aws eks describe-cluster \
+  --name "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --query 'cluster.{status:status,version:version,endpoint:endpoint,private:resourcesVpcConfig.endpointPrivateAccess,public:resourcesVpcConfig.endpointPublicAccess,cidrs:resourcesVpcConfig.publicAccessCidrs,sg:resourcesVpcConfig.clusterSecurityGroupId}' \
+  --output yaml</pre><p class="tip">Public Endpoint를 <code>0.0.0.0/0</code>으로 열지 않습니다. 운영 위치가 바뀌면 현재 공인 IP /32를 갱신하거나 VPC 내부 관리 환경을 사용합니다. Private Endpoint에는 VPC DNS support와 hostnames가 필요합니다.</p></section>
+<section class="panel"><h2>kubeconfig와 접근 확인</h2><pre class="code-block">aws eks update-kubeconfig \
+  --name "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --alias "$CLUSTER_NAME"
+
+kubectl config current-context
+kubectl cluster-info
+kubectl get namespaces
+kubectl auth can-i '*' '*' --all-namespaces</pre><p class="tip">클러스터 생성 IAM Principal은 관리자 접근을 갖습니다. 다른 IAM Role로 운영한다면 EKS Access Entry와 Kubernetes Access Policy를 별도로 구성합니다. kubeconfig 파일에 장기 Access Key를 넣지 않습니다.</p></section>
+<section class="panel"><h2>Managed Node Group 생성</h2><pre class="code-block">aws eks create-nodegroup \
+  --cluster-name "$CLUSTER_NAME" \
+  --nodegroup-name "$NODEGROUP_NAME" \
+  --node-role "$NODE_ROLE_ARN" \
+  --subnets "$PRIVATE_A_SUBNET" "$PRIVATE_C_SUBNET" \
+  --instance-types t3.medium \
+  --ami-type AL2023_x86_64_STANDARD \
+  --capacity-type ON_DEMAND \
+  --disk-size 20 \
+  --scaling-config minSize=2,maxSize=2,desiredSize=2 \
+  --update-config maxUnavailable=1 \
+  --labels workload=apdev,lifecycle=on-demand \
+  --tags Project=apdev,ManagedBy=student \
+  --region "$AWS_REGION"
+
+aws eks wait nodegroup-active \
+  --cluster-name "$CLUSTER_NAME" \
+  --nodegroup-name "$NODEGROUP_NAME" \
+  --region "$AWS_REGION"</pre><p class="tip">Node Group은 EC2 On-Demand <code>t3.medium</code>만 사용합니다. Spot, 다른 instance type, Fargate Profile을 혼합하지 않습니다. 초기 desired 2는 두 AZ 가용성의 시작점이며 14~16차시 측정 결과로만 조정합니다.</p></section>
+<section class="panel"><h2>Node Group 설정 검증</h2><pre class="code-block">aws eks describe-nodegroup \
+  --cluster-name "$CLUSTER_NAME" \
+  --nodegroup-name "$NODEGROUP_NAME" \
+  --region "$AWS_REGION" \
+  --query 'nodegroup.{status:status,subnets:subnets,types:instanceTypes,ami:amiType,capacity:capacityType,scaling:scalingConfig,role:nodeRole}' \
+  --output yaml
+
+kubectl get nodes -o wide
+kubectl get nodes -L topology.kubernetes.io/zone,node.kubernetes.io/instance-type,eks.amazonaws.com/nodegroup
+
+kubectl wait --for=condition=Ready nodes --all --timeout=10m</pre><p>아래 명령으로 모든 Worker Node가 지정 타입인지 기계적으로 확인합니다.</p><pre class="code-block">test "$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.labels.node\.kubernetes\.io/instance-type}{"\n"}{end}' | sort -u)" = 't3.medium' &amp;&amp; echo PASS</pre></section>
+<section class="panel"><h2>System Pod와 Add-on 확인</h2><pre class="code-block">kubectl get pods -n kube-system -o wide
+
+aws eks list-addons \
+  --cluster-name "$CLUSTER_NAME" \
+  --region "$AWS_REGION"
+
+kubectl get daemonset aws-node -n kube-system
+kubectl get deployment coredns -n kube-system
+kubectl get daemonset kube-proxy -n kube-system</pre><div class="check-grid"><div class="check-item"><b>aws-node</b>각 Node에서 Running</div><div class="check-item"><b>kube-proxy</b>각 Node에서 Running</div><div class="check-item"><b>CoreDNS</b>Available replica 확보</div><div class="check-item"><b>Events</b>반복 Warning 없음</div></div></section>
+<section class="panel"><h2>ECR Pull Smoke Test</h2><p>6차시에 기록한 USER digest를 사용해 Node Role과 Private Subnet의 ECR 경로를 확인합니다.</p><pre class="code-block">USER_IMAGE=$(grep '^user=' ~/app-test/ecr-images.txt | cut -d= -f2-)
+
+kubectl run ecr-pull-test \
+  --image="$USER_IMAGE" \
+  --restart=Never
+
+kubectl get pod ecr-pull-test -w
+kubectl describe pod ecr-pull-test
+kubectl delete pod ecr-pull-test --ignore-not-found</pre><p class="tip">애플리케이션이 환경변수 누락으로 종료되어도 image pull이 성공했다면 목적은 달성됩니다. Pod Event에 <code>Pulled</code>가 있는지 확인하고 테스트 Pod를 삭제합니다.</p></section>
+<section class="panel"><h2>RDS Security Group 연결 갱신</h2><p>실제 Worker Node ENI에 연결된 Security Group ID를 확인해 RDS 3306 Source로 사용합니다.</p><pre class="code-block">NODE_INSTANCE_ID=$(kubectl get nodes -o jsonpath='{.items[0].spec.providerID}' | awk -F/ '{print $NF}')
+NODE_SGS=$(aws ec2 describe-instances \
+  --instance-ids "$NODE_INSTANCE_ID" \
+  --query 'Reservations[0].Instances[0].SecurityGroups[].GroupId' \
+  --output text)
+
+echo "NODE_INSTANCE_ID=$NODE_INSTANCE_ID"
+echo "NODE_SGS=$NODE_SGS"
+
+# RDS SG의 TCP 3306 Source가 실제 Node SG인지 콘솔에서 대조
+aws ec2 describe-security-groups \
+  --group-ids &lt;rds-sg-id&gt; \
+  --query 'SecurityGroups[0].IpPermissions' \
+  --output json</pre><p class="tip">2~3차시에서 임시로 가정한 <code>eks-node-sg</code> 대신 실제 Managed Node Group의 Security Group을 확인합니다. CIDR 전체를 열지 말고 SG 참조 규칙을 사용합니다.</p></section>
+<section class="panel"><h2>비용과 불필요 리소스 점검</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>리소스</th><th>이번 차시 수량</th><th>점검</th></tr></thead><tbody><tr><td>EKS Cluster</td><td>1</td><td>중복 클러스터 없음</td></tr><tr><td>Managed Node Group</td><td>1</td><td>미사용 Node Group 없음</td></tr><tr><td>EC2 Worker Node</td><td>2 × t3.medium</td><td>다른 타입·추가 ASG 없음</td></tr><tr><td>Fargate Profile</td><td>0</td><td>과제 금지 조건</td></tr><tr><td>Launch Template</td><td>0</td><td>현재 요구에 불필요</td></tr></tbody></table></div></section>
+<section class="panel"><h2>오류별 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>증상</th><th>주요 원인</th><th>확인·해결</th></tr></thead><tbody>
+<tr><td>Cluster creation failed</td><td>Role·Subnet·AZ 용량</td><td>CloudTrail, role trust, 2개 지원 AZ 확인</td></tr>
+<tr><td>kubectl timeout</td><td>Endpoint CIDR·DNS·네트워크</td><td>현재 공인 IP /32와 Private DNS 확인</td></tr>
+<tr><td>Unauthorized</td><td>다른 IAM Principal 사용</td><td><code>aws sts get-caller-identity</code>, Access Entry 확인</td></tr>
+<tr><td>Node가 NotReady</td><td>CNI·NAT·Endpoint·Node Role</td><td>aws-node 로그, route, IAM 정책 확인</td></tr>
+<tr><td>Node가 cluster에 미등록</td><td>Private Subnet egress 또는 Role</td><td>EKS API/ECR/S3 경로와 trust 확인</td></tr>
+<tr><td>ImagePullBackOff</td><td>ECR PullOnly·digest·통신 오류</td><td><code>kubectl describe pod</code> Event 확인</td></tr>
+<tr><td>InsufficientFreeAddresses</td><td>Subnet IP 부족</td><td>AvailableIpAddressCount와 aws-node 확인</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>8차시 전달 체크리스트</h2><ul><li>EKS Cluster는 1개이며 상태가 ACTIVE입니다.</li><li>Managed Node Group은 1개이고 Worker Node는 EC2 <code>t3.medium</code>만 사용합니다.</li><li>두 Node가 Ready이며 2개 Private App Subnet을 사용합니다.</li><li>Public API Endpoint는 운영자 /32로 제한되고 Private Endpoint가 활성화됐습니다.</li><li>aws-node, kube-proxy, CoreDNS가 정상입니다.</li><li>ECR digest 이미지 pull Event를 확인했습니다.</li><li>RDS 3306 Source가 실제 Worker Node Security Group입니다.</li><li>Fargate Profile과 불필요한 Node Group·Launch Template가 없습니다.</li></ul><p>공식 참고: <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-cluster.html">EKS Cluster 생성</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-managed-node-group.html">Managed Node Group</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html">Node IAM Role</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/cluster-endpoint.html">API Endpoint</a></p></section>`;}
 if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
 </script></body></html>
