@@ -31,15 +31,14 @@ Internet Gateway → Public Subnet의 ALB
                   Private App Subnet의 EKS Node/Pod
                          ├─ TCP 3306 → Private DB Subnet의 RDS MySQL
                          └─ HTTPS 443 → S3</div><p class="tip">예시 CIDR은 실습용입니다. 이미 사용 중인 VPC 또는 연결 대상과 겹치지 않도록 조정하세요. ALB만 Public Subnet에 두고 EKS Worker Node와 RDS는 Private Subnet에 배치합니다.</p></section>
-<section class="panel"><h2>VPC 및 Subnet 설계표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>구분</th><th>AZ</th><th>예시 CIDR</th><th>라우팅</th><th>배치 리소스</th></tr></thead><tbody>
-<tr><td>VPC</td><td>서울 리전</td><td><code>10.0.0.0/16</code></td><td>DNS hostnames 활성화</td><td>전체 실습 리소스</td></tr>
-<tr><td>Public-A</td><td>ap-northeast-2a</td><td><code>10.0.0.0/24</code></td><td><code>0.0.0.0/0 → IGW</code></td><td>ALB, NAT Gateway</td></tr>
-<tr><td>Public-C</td><td>ap-northeast-2c</td><td><code>10.0.1.0/24</code></td><td><code>0.0.0.0/0 → IGW</code></td><td>ALB</td></tr>
-<tr><td>Private-App-A</td><td>ap-northeast-2a</td><td><code>10.0.10.0/24</code></td><td><code>0.0.0.0/0 → NAT</code></td><td>EKS Worker Node/Pod</td></tr>
-<tr><td>Private-App-C</td><td>ap-northeast-2c</td><td><code>10.0.11.0/24</code></td><td><code>0.0.0.0/0 → NAT</code></td><td>EKS Worker Node/Pod</td></tr>
-<tr><td>Private-DB-A</td><td>ap-northeast-2a</td><td><code>10.0.20.0/24</code></td><td>Local only</td><td>RDS Primary</td></tr>
-<tr><td>Private-DB-C</td><td>ap-northeast-2c</td><td><code>10.0.21.0/24</code></td><td>Local only</td><td>RDS Standby</td></tr>
-</tbody></table></div></section>
+<section class="panel"><h2>VPC 및 Subnet 설계표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>구분</th><th>AZ</th><th>이름</th><th>CIDR</th><th>용도</th></tr></thead><tbody>
+<tr><td>Public</td><td>ap-northeast-2a</td><td><code>public-a</code></td><td><code>10.0.1.0/24</code></td><td>ALB, NAT Gateway</td></tr>
+<tr><td>Public</td><td>ap-northeast-2c</td><td><code>public-c</code></td><td><code>10.0.2.0/24</code></td><td>ALB, NAT Gateway</td></tr>
+<tr><td><strong>Private App</strong></td><td>ap-northeast-2a</td><td><code>private-a</code></td><td><code>10.0.3.0/24</code></td><td><strong>EKS Worker Node / Pod</strong></td></tr>
+<tr><td><strong>Private App</strong></td><td>ap-northeast-2c</td><td><code>private-c</code></td><td><code>10.0.4.0/24</code></td><td><strong>EKS Worker Node / Pod</strong></td></tr>
+<tr><td><strong>Private DB</strong></td><td>ap-northeast-2a</td><td><code>db-a</code></td><td><code>10.0.11.0/24</code></td><td>RDS</td></tr>
+<tr><td><strong>Private DB</strong></td><td>ap-northeast-2c</td><td><code>db-c</code></td><td><code>10.0.12.0/24</code></td><td>RDS</td></tr>
+</tbody></table></div><p class="tip">VPC CIDR은 <code>10.0.0.0/16</code>을 사용합니다. Public 서브넷은 Internet Gateway 경로를, Private App 서브넷은 NAT Gateway 경로를 사용하며 Private DB 서브넷은 인터넷 기본 경로를 두지 않습니다.</p></section>
 <section class="panel"><h2>Security Group 규칙표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>대상 SG</th><th>방향</th><th>프로토콜/포트</th><th>허용 Source/Destination</th><th>목적</th></tr></thead><tbody>
 <tr><td>alb-sg</td><td>Inbound</td><td>HTTPS 443</td><td><code>0.0.0.0/0</code></td><td>인터넷 사용자 접속</td></tr>
 <tr><td>alb-sg</td><td>Outbound</td><td>TCP 8080</td><td><code>eks-node-sg</code></td><td>애플리케이션 전달</td></tr>
