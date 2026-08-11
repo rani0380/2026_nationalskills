@@ -126,5 +126,125 @@ ROLLBACK;</pre><div class="check-grid"><div class="check-item"><b>연결</b>EKS 
 <tr><td>Duplicate entry</td><td>dump 중복 적재</td><td>기존 데이터와 적재 횟수 확인</td></tr>
 <tr><td>느린 user GET</td><td>email 인덱스 없음</td><td><code>EXPLAIN SELECT ... WHERE email=...</code></td></tr>
 </tbody></table></div></section>`;}
+if(n===4){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>단독 실행의 목적</h2><p>컨테이너와 EKS를 만들기 전에 바이너리 자체, RDS 연결, API 규격을 먼저 검증합니다. 이 단계에서 실패하면 Docker나 Kubernetes 문제가 아니라 애플리케이션·환경변수·DB 문제로 범위를 좁힐 수 있습니다.</p><div class="check-grid"><div class="check-item"><b>USER</b>POST/GET 및 RDS 읽기·쓰기</div><div class="check-item"><b>PRODUCT</b>POST/GET/PUT 이미지 업로드</div><div class="check-item"><b>STRESS</b>CPU 부하 요청과 응답시간</div><div class="check-item"><b>공통</b>healthcheck, 403, 404, access log</div></div></section>
+<section class="panel"><h2>실행 환경 체크표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>항목</th><th>기준</th><th>확인 명령</th></tr></thead><tbody>
+<tr><td>OS</td><td>Amazon Linux 2023</td><td><code>cat /etc/os-release</code></td></tr>
+<tr><td>Architecture</td><td>x86_64 / amd64</td><td><code>uname -m</code></td></tr>
+<tr><td>EC2 type</td><td><code>t3.medium</code></td><td>EC2 Instance details</td></tr>
+<tr><td>Application port</td><td>TCP <code>8080</code></td><td><code>ss -lntp | grep :8080</code></td></tr>
+<tr><td>Timezone</td><td>KST / Asia/Seoul</td><td><code>timedatectl</code></td></tr>
+<tr><td>RDS access</td><td>Endpoint TCP 3306</td><td><code>nc -vz &lt;RDS_ENDPOINT&gt; 3306</code></td></tr>
+</tbody></table></div><p class="tip">세 바이너리는 모두 8080을 사용하므로 한 호스트에서는 <strong>한 번에 하나씩</strong> 실행해 검증합니다. 별도의 미사용 EC2를 계속 두면 비용과 채점에 불리할 수 있으므로 테스트용 인스턴스는 검증 후 종료하거나 삭제합니다.</p></section>
+<section class="panel"><h2>사전 준비</h2><pre class="code-block">sudo timedatectl set-timezone Asia/Seoul
+sudo dnf install -y mariadb105 nc jq
+
+mkdir -p ~/app-test/bin ~/app-test/logs ~/app-test/images
+cd ~/app-test/bin
+
+# 지급받은 실제 파일명에 맞춰 복사
+cp /path/to/user ./user
+cp /path/to/product ./product
+cp /path/to/stress ./stress
+chmod 750 user product stress
+
+file user product stress
+sha256sum user product stress</pre><p class="tip"><code>file</code> 결과에서 Linux x86-64 실행 파일인지 확인하고, 세 파일의 SHA-256 값을 기록해 이후 이미지 빌드에 같은 바이너리를 사용했는지 검증합니다.</p></section>
+<section class="panel"><h2>RDS 환경변수 설정</h2><p>터미널 기록과 Git 저장소에 비밀번호가 남지 않도록 권한이 제한된 환경 파일을 사용합니다.</p><pre class="code-block">cat &gt; ~/app-test/mysql.env &lt;&lt;'EOF'
+MYSQL_USER=appuser
+MYSQL_PASSWORD=&lt;STRONG_PASSWORD&gt;
+MYSQL_HOST=&lt;RDS_ENDPOINT&gt;
+MYSQL_PORT=3306
+MYSQL_DBNAME=dev
+EOF
+chmod 600 ~/app-test/mysql.env
+
+set -a
+source ~/app-test/mysql.env
+set +a
+
+# 값 자체를 출력하지 않고 설정 여부만 확인
+for key in MYSQL_USER MYSQL_PASSWORD MYSQL_HOST MYSQL_PORT MYSQL_DBNAME; do
+  test -n "\${!key}" &amp;&amp; echo "$key=SET" || echo "$key=MISSING"
+done</pre><p class="tip"><code>MYSQL_HOST</code>에는 RDS endpoint만 입력합니다. <code>mysql://</code>, 포트, 데이터베이스명 또는 MySQL 엔진명을 함께 넣지 않습니다.</p></section>
+<section class="panel"><h2>공통 실행·종료 절차</h2><pre class="code-block">cd ~/app-test/bin
+APP=user                         # product 또는 stress로 변경
+
+./$APP &gt;&gt; ~/app-test/logs/$APP.log 2&gt;&amp;1 &amp;
+APP_PID=$!
+echo "$APP_PID" &gt; ~/app-test/$APP.pid
+
+sleep 2
+curl -i http://127.0.0.1:8080/healthcheck
+ss -lntp | grep :8080
+tail -n 30 ~/app-test/logs/$APP.log
+
+# 해당 앱 검증이 끝나면 반드시 종료
+kill "$(cat ~/app-test/$APP.pid)"
+rm -f ~/app-test/$APP.pid
+sleep 1
+! ss -lntp | grep -q :8080 &amp;&amp; echo 'port 8080 released'</pre></section>
+<section class="panel"><h2>공통 테스트 변수</h2><pre class="code-block">BASE=http://127.0.0.1:8080
+REQUEST_ID=999999999999
+UUID=7c5a3c6a-758f-4bc5-9bdf-3e573a0ad729
+EMAIL=dbdump500001@example.org
+PRODUCT_ID=dbdump500001</pre></section>
+<section class="panel"><h2>USER API 검증</h2><pre class="code-block"># POST: 사용자 생성 → 201
+curl -i -X POST "$BASE/v1/user" \
+  -H 'Content-Type: application/json' \
+  -d "{\"requestid\":\"$REQUEST_ID\",\"uuid\":\"$UUID\",\"username\":\"practice-user-001\",\"email\":\"practice-user-001@example.org\"}"
+
+# GET: dump 사용자 조회 → 200
+curl -i -G "$BASE/v1/user" \
+  --data-urlencode "email=$EMAIL" \
+  --data-urlencode "requestid=$REQUEST_ID" \
+  --data-urlencode "uuid=$UUID"</pre><p class="tip">지급 dump와 충돌하지 않는 고유한 username/email을 POST 테스트에 사용합니다. 반복 테스트 시 같은 값으로 인한 중복 오류와 시스템 장애를 구분하세요.</p></section>
+<section class="panel"><h2>PRODUCT API 검증</h2><pre class="code-block"># POST: 상품 생성 → 201
+curl -i -X POST "$BASE/v1/product" \
+  -H 'Content-Type: application/json' \
+  -d "{\"requestid\":\"$REQUEST_ID\",\"uuid\":\"$UUID\",\"id\":\"practice-product-001\",\"name\":\"practice-product\",\"price\":1234}"
+
+# GET: 상품 조회 → 200
+curl -i -G "$BASE/v1/product" \
+  --data-urlencode 'id=practice-product-001' \
+  --data-urlencode "requestid=$REQUEST_ID" \
+  --data-urlencode "uuid=$UUID"
+
+# 작은 이미지 준비 및 multipart PUT → 200
+printf 'practice-image' &gt; ~/app-test/images/small.jpg
+curl -i -X PUT "$BASE/v1/product" \
+  -F "requestid=$REQUEST_ID" \
+  -F "uuid=$UUID" \
+  -F 'id=practice-product-001' \
+  -F 'image=@/home/ec2-user/app-test/images/small.jpg;type=image/jpeg'</pre><p class="tip">실제 지급 바이너리의 multipart 필드명이 별도 자료에 지정되어 있다면 그 값을 우선합니다. 업로드 후 DB의 <code>image_path</code> 변경과 S3 객체 생성 여부는 11차시에서 함께 검증합니다.</p></section>
+<section class="panel"><h2>STRESS API 검증</h2><pre class="code-block">curl -i -X POST "$BASE/v1/stress" \
+  -H 'Content-Type: application/json' \
+  -d "{\"requestid\":\"$REQUEST_ID\",\"uuid\":\"$UUID\",\"length\":256}"</pre><p class="tip">STRESS 요청은 CPU 사용량을 높일 수 있습니다. 기능 확인에는 1회만 호출하고 반복 부하는 14차시 성능 측정에서 제한된 시간 동안 수행합니다.</p></section>
+<section class="panel"><h2>403·404 사전 확인</h2><pre class="code-block"># 정상 API지만 requestid/uuid 누락 → 403 기대
+curl -s -o /dev/null -w 'invalid=%{http_code}\n' \
+  "$BASE/v1/user?email=$EMAIL"
+
+# 존재하지 않는 API → 404 기대
+curl -s -o /dev/null -w 'missing=%{http_code}\n' \
+  "$BASE/v1/none"</pre><p>Ingress 또는 WAF에서 최종 규칙을 적용하기 전이라 바이너리 단독 실행 결과가 다를 수 있습니다. 이 경우 결과를 기록하고 12차시에서 최종 403/404를 구성합니다.</p></section>
+<section class="panel"><h2>응답시간 측정</h2><pre class="code-block">curl -s -o /dev/null \
+  -w 'code=%{http_code} total=%{time_total}s\n' \
+  "$BASE/healthcheck"
+
+# 10회 간단 측정
+for i in $(seq 1 10); do
+  curl -s -o /dev/null -w '%{time_total}\n' "$BASE/healthcheck"
+done</pre><div class="table-wrap"><table class="network-table"><thead><tr><th>대상</th><th>최소 가용성 기준</th><th>서비스 목표</th></tr></thead><tbody><tr><td>USER</td><td>5초 이하</td><td>0.2초 이하</td></tr><tr><td>PRODUCT</td><td>5초 이하</td><td>0.2초 이하</td></tr><tr><td>STRESS</td><td>5초 이하</td><td>1초 이하</td></tr><tr><td>Image</td><td>5초 이하</td><td>5초 이하</td></tr></tbody></table></div></section>
+<section class="panel"><h2>로그 확인 포인트</h2><div class="check-grid"><div class="check-item"><b>Request</b>method, path, requestid, uuid</div><div class="check-item"><b>Response</b>status code와 응답시간</div><div class="check-item"><b>Database</b>연결 오류와 SQL 오류</div><div class="check-item"><b>Process</b>panic, exit, memory 오류</div></div><pre class="code-block">grep -Ei 'error|panic|timeout|denied|duplicate' ~/app-test/logs/*.log
+tail -F ~/app-test/logs/user.log</pre></section>
+<section class="panel"><h2>오류별 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>증상</th><th>원인 후보</th><th>확인 방법</th></tr></thead><tbody>
+<tr><td>Permission denied</td><td>실행 권한 없음</td><td><code>chmod 750 &lt;binary&gt;</code></td></tr>
+<tr><td>Exec format error</td><td>CPU/OS 불일치</td><td><code>file &lt;binary&gt;</code>, <code>uname -m</code></td></tr>
+<tr><td>Address already in use</td><td>기존 앱이 8080 사용</td><td><code>ss -lntp | grep :8080</code></td></tr>
+<tr><td>DB timeout</td><td>SG·Subnet·Endpoint 오류</td><td><code>nc -vz $MYSQL_HOST 3306</code></td></tr>
+<tr><td>Access denied for user</td><td>DB 계정·권한 오류</td><td>MYSQL_USER/PASSWORD 및 GRANT 확인</td></tr>
+<tr><td>즉시 프로세스 종료</td><td>필수 환경변수 누락</td><td>로그와 환경변수 SET 여부 확인</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>최종 정리 체크리스트</h2><ul><li>세 앱의 healthcheck와 핵심 API 응답코드를 기록했습니다.</li><li>로그 파일과 바이너리 SHA-256 값을 보관했습니다.</li><li>실행 중인 STRESS 요청과 애플리케이션 프로세스를 모두 종료했습니다.</li><li><code>mysql.env</code> 권한이 600이며 Git에 포함되지 않았습니다.</li><li>테스트용 EC2가 더 이상 필요 없다면 종료가 아니라 <strong>삭제(terminate)</strong>했습니다.</li></ul></section>`;}
 if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
 </script></body></html>
