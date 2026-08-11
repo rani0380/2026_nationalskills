@@ -758,5 +758,219 @@ aws ec2 describe-security-groups \
 <tr><td>InsufficientFreeAddresses</td><td>Subnet IP 부족</td><td>AvailableIpAddressCount와 aws-node 확인</td></tr>
 </tbody></table></div></section>
 <section class="panel"><h2>8차시 전달 체크리스트</h2><ul><li>EKS Cluster는 1개이며 상태가 ACTIVE입니다.</li><li>Managed Node Group은 1개이고 Worker Node는 EC2 <code>t3.medium</code>만 사용합니다.</li><li>두 Node가 Ready이며 2개 Private App Subnet을 사용합니다.</li><li>Public API Endpoint는 운영자 /32로 제한되고 Private Endpoint가 활성화됐습니다.</li><li>aws-node, kube-proxy, CoreDNS가 정상입니다.</li><li>ECR digest 이미지 pull Event를 확인했습니다.</li><li>RDS 3306 Source가 실제 Worker Node Security Group입니다.</li><li>Fargate Profile과 불필요한 Node Group·Launch Template가 없습니다.</li></ul><p>공식 참고: <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-cluster.html">EKS Cluster 생성</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-managed-node-group.html">Managed Node Group</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html">Node IAM Role</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/cluster-endpoint.html">API Endpoint</a></p></section>`;}
-if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
+if(n===8){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>실습 목표와 Kubernetes 객체 관계</h2><div class="diagram">Deployment
+   ├─ ReplicaSet → USER Pod 2개
+   │                 ├─ startupProbe
+   │                 ├─ readinessProbe ── Ready Pod만 Endpoint 등록
+   │                 └─ livenessProbe ─── 실패 시 Container 재시작
+   └─ label app=user
+              ▲ selector app=user
+              │
+       ClusterIP Service user-service:8080</div><div class="table-wrap"><table class="network-table"><thead><tr><th>객체</th><th>역할</th><th>이번 실습 값</th></tr></thead><tbody>
+<tr><td>Namespace</td><td>과제 리소스 논리 분리</td><td><code>apdev</code></td></tr>
+<tr><td>Deployment</td><td>Pod 개수·업데이트·자동복구 관리</td><td><code>user-deployment</code>, replicas 2</td></tr>
+<tr><td>Service</td><td>변하지 않는 내부 DNS와 트래픽 분산</td><td><code>user-service</code>, ClusterIP</td></tr>
+<tr><td>Probe</td><td>시작·트래픽 수신·생존 상태 판단</td><td><code>/healthcheck</code>, TCP 8080</td></tr>
+</tbody></table></div><p class="tip">8차시에서는 USER 앱 하나로 객체 관계와 복구 동작을 완전히 검증합니다. 9차시에서 같은 패턴을 PRODUCT와 STRESS에 확장합니다.</p></section>
+<section class="panel"><h2>1. 사전 점검과 작업 디렉터리</h2><pre class="code-block">export AWS_REGION=ap-northeast-2
+export CLUSTER_NAME=apdev-eks-cluster
+export NAMESPACE=apdev
+mkdir -p ~/apdev-k8s/lesson08
+cd ~/apdev-k8s/lesson08
+
+aws eks update-kubeconfig \
+  --region "$AWS_REGION" \
+  --name "$CLUSTER_NAME"
+
+kubectl cluster-info
+kubectl get nodes -o wide
+kubectl get pods -n kube-system
+aws sts get-caller-identity</pre><p class="tip">두 Worker Node가 <code>Ready</code>가 아니면 Deployment를 만들기 전에 7차시 Node Group과 System Pod부터 복구합니다.</p></section>
+<section class="panel"><h2>2. Namespace 생성</h2><pre class="code-block">kubectl create namespace apdev \
+  --dry-run=client -o yaml &gt; 00-namespace.yaml
+kubectl apply -f 00-namespace.yaml
+kubectl config set-context --current --namespace=apdev
+
+kubectl get namespace apdev
+kubectl config view --minify \
+  -o jsonpath='{..namespace}'; echo</pre><p class="tip">이후 명령의 <code>-n apdev</code> 누락을 줄이기 위해 현재 context의 기본 Namespace를 지정합니다. 대회 종료 전 다른 작업을 한다면 현재 Namespace를 다시 확인합니다.</p></section>
+<section class="panel"><h2>3. ConfigMap·Secret 준비</h2><pre class="code-block">cat &gt; app.env &lt;&lt;'EOF'
+MYSQL_HOST=&lt;RDS_ENDPOINT&gt;
+MYSQL_PORT=3306
+MYSQL_DBNAME=dev
+MYSQL_USER=appuser
+MYSQL_PASSWORD=&lt;STRONG_PASSWORD&gt;
+EOF
+chmod 600 app.env
+
+kubectl create configmap user-config \
+  --from-literal=MYSQL_HOST="$(grep '^MYSQL_HOST=' app.env | cut -d= -f2-)" \
+  --from-literal=MYSQL_PORT=3306 \
+  --from-literal=MYSQL_DBNAME=dev \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl create secret generic user-db-secret \
+  --from-literal=MYSQL_USER="$(grep '^MYSQL_USER=' app.env | cut -d= -f2-)" \
+  --from-literal=MYSQL_PASSWORD="$(grep '^MYSQL_PASSWORD=' app.env | cut -d= -f2-)" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl get configmap user-config
+kubectl get secret user-db-secret</pre><p class="tip"><code>app.env</code>와 Secret YAML을 Git에 커밋하지 않습니다. <code>kubectl get secret -o yaml</code>의 값은 암호화가 아니라 Base64 표현이므로 화면 캡처나 제출 파일에 노출하지 않습니다.</p></section>
+<section class="panel"><h2>4. USER Deployment YAML</h2><pre class="code-block">cat &gt; 10-user-deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-deployment
+  namespace: apdev
+  labels:
+    app: user
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: user
+  template:
+    metadata:
+      labels:
+        app: user
+    spec:
+      containers:
+        - name: user
+          image: &lt;ACCOUNT_ID&gt;.dkr.ecr.ap-northeast-2.amazonaws.com/user@sha256:&lt;DIGEST&gt;
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: user-config
+            - secretRef:
+                name: user-db-secret
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+EOF</pre><p class="tip">ECR URI는 변경 가능한 태그보다 6차시에 기록한 digest를 사용합니다. 앱이 시작할 때 DB 연결에 시간이 걸릴 수 있어 <code>startupProbe</code>가 통과하기 전에는 liveness/readiness 판단을 유예합니다.</p></section>
+<section class="panel"><h2>5. ClusterIP Service YAML</h2><pre class="code-block">cat &gt; 20-user-service.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: apdev
+spec:
+  type: ClusterIP
+  selector:
+    app: user
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+EOF</pre><div class="table-wrap"><table class="network-table"><thead><tr><th>필드</th><th>값</th><th>연결 대상</th></tr></thead><tbody>
+<tr><td>Deployment selector</td><td><code>app: user</code></td><td>Pod template label</td></tr>
+<tr><td>Service selector</td><td><code>app: user</code></td><td>같은 label의 Ready Pod</td></tr>
+<tr><td>Service port</td><td><code>8080</code></td><td>클러스터 내부 호출 포트</td></tr>
+<tr><td>targetPort</td><td><code>http</code></td><td>Container port 이름</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>6. 적용과 Rollout 확인</h2><pre class="code-block">kubectl apply -f 10-user-deployment.yaml
+kubectl apply -f 20-user-service.yaml
+
+kubectl rollout status deployment/user-deployment \
+  --timeout=5m
+kubectl get deployment,replicaset,pod,service -o wide
+kubectl get pod -l app=user --show-labels
+kubectl describe deployment user-deployment</pre><p>정상 기준은 Deployment의 <code>READY 2/2</code>, 두 Pod의 <code>READY 1/1</code>과 <code>STATUS Running</code>입니다. Rollout timeout이 발생하면 다음 단계로 넘어가지 말고 Event와 로그를 먼저 확인합니다.</p></section>
+<section class="panel"><h2>7. Service Endpoint 검증</h2><pre class="code-block">kubectl get service user-service
+kubectl get endpoints user-service
+kubectl get endpointslice \
+  -l kubernetes.io/service-name=user-service
+
+# 로컬 PC에서 임시 확인
+kubectl port-forward service/user-service 18080:8080</pre><p>다른 터미널에서 호출합니다.</p><pre class="code-block">curl -i http://127.0.0.1:18080/healthcheck</pre><p class="tip">Service는 있는데 Endpoint가 비어 있으면 Service selector와 Pod label 불일치 또는 readinessProbe 실패입니다. Endpoint에 Pod IP 두 개가 나타나야 두 Replica로 분산할 수 있습니다.</p></section>
+<section class="panel"><h2>8. Probe 역할 비교</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>Probe</th><th>실패 시 동작</th><th>사용 목적</th><th>주의사항</th></tr></thead><tbody>
+<tr><td>startupProbe</td><td>성공 전 다른 Probe 유예, 계속 실패하면 재시작</td><td>느린 초기화 보호</td><td>최대 시작 시간을 넉넉히 계산</td></tr>
+<tr><td>readinessProbe</td><td>Pod를 Service Endpoint에서 제외</td><td>요청을 받을 준비 판단</td><td>실패해도 Container를 재시작하지 않음</td></tr>
+<tr><td>livenessProbe</td><td>Container 재시작</td><td>교착·복구 불가능 상태 탐지</td><td>외부 DB의 순간 장애에 과민하게 설정 금지</td></tr>
+</tbody></table></div><pre class="code-block">kubectl describe pod -l app=user
+kubectl get pod -l app=user \
+  -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount'</pre></section>
+<section class="panel"><h2>9. Pod 자동복구 실험</h2><pre class="code-block">kubectl get pod -l app=user -o wide
+OLD_POD=$(kubectl get pod -l app=user \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl delete pod "$OLD_POD"
+
+kubectl get pod -l app=user -w</pre><p>새 Pod가 자동 생성되어 <code>Running</code>과 <code>Ready</code>가 되면 <kbd>Ctrl+C</kbd>로 감시를 종료합니다.</p><pre class="code-block">kubectl get deployment user-deployment
+kubectl get endpoints user-service</pre><p class="tip">Pod를 삭제해도 Deployment의 desired replicas가 2이므로 ReplicaSet이 새 Pod를 만듭니다. 같은 Pod 이름이 되살아나는 것이 아니라 새 이름과 새 IP를 가진 Pod가 생성됩니다.</p></section>
+<section class="panel"><h2>10. Rolling Update와 Rollback</h2><pre class="code-block"># 새 이미지 digest로 교체
+kubectl set image deployment/user-deployment \
+  user=&lt;ACCOUNT_ID&gt;.dkr.ecr.ap-northeast-2.amazonaws.com/user@sha256:&lt;NEW_DIGEST&gt;
+
+kubectl rollout status deployment/user-deployment \
+  --timeout=5m
+kubectl rollout history deployment/user-deployment
+kubectl get pod -l app=user -o wide
+
+# 새 버전에 문제가 있으면 즉시 이전 revision으로 복구
+kubectl rollout undo deployment/user-deployment
+kubectl rollout status deployment/user-deployment \
+  --timeout=5m</pre><p class="tip"><code>maxUnavailable: 0</code>, <code>maxSurge: 1</code>이므로 업데이트 중 준비된 기존 Pod를 먼저 유지하고 새 Pod를 추가합니다. Node의 CPU·메모리 여유가 있어야 Surge Pod가 Scheduling됩니다.</p></section>
+<section class="panel"><h2>11. 장애 분석 명령 순서</h2><pre class="code-block">kubectl get pod -l app=user -o wide
+kubectl describe pod -l app=user
+kubectl logs -l app=user --all-containers \
+  --tail=100 --prefix
+kubectl logs &lt;POD_NAME&gt; --previous
+kubectl get events --sort-by='.lastTimestamp' | tail -30
+kubectl get endpoints user-service
+kubectl top pod -l app=user
+kubectl top node</pre><ol><li>Pod 상태와 <code>READY</code>를 봅니다.</li><li><code>describe</code>의 Events에서 Scheduling, Pull, Probe 실패를 찾습니다.</li><li>현재 로그와 <code>--previous</code> 로그로 재시작 직전 원인을 확인합니다.</li><li>Endpoint와 자원 사용량을 확인합니다.</li></ol></section>
+<section class="panel"><h2>12. 오류별 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>상태·증상</th><th>주요 원인</th><th>확인·조치</th></tr></thead><tbody>
+<tr><td><code>ImagePullBackOff</code></td><td>ECR URI·digest·Node Role 오류</td><td>Pod Event와 <code>AmazonEC2ContainerRegistryPullOnly</code> 확인</td></tr>
+<tr><td><code>CrashLoopBackOff</code></td><td>환경변수·DB 연결·실행 파일 오류</td><td><code>logs --previous</code>, Secret key, RDS SG 확인</td></tr>
+<tr><td><code>Pending</code></td><td>자원 부족·taint·Subnet IP 부족</td><td>Events, requests, Node 상태와 IP 여유 확인</td></tr>
+<tr><td><code>Running 0/1</code></td><td>readiness/startup Probe 실패</td><td>Pod 내부의 8080과 <code>/healthcheck</code> 응답 확인</td></tr>
+<tr><td>Service Endpoint 없음</td><td>selector-label 불일치 또는 NotReady</td><td>Service selector, Pod label, Probe 확인</td></tr>
+<tr><td><code>OOMKilled</code></td><td>Memory limit 부족</td><td>사용량 측정 후 requests/limits 조정</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>13. 제출 전 검증 명령</h2><pre class="code-block">kubectl get deployment user-deployment \
+  -o jsonpath='{.status.readyReplicas}/{.spec.replicas}'; echo
+kubectl get pod -l app=user
+kubectl get service user-service
+kubectl get endpoints user-service
+kubectl rollout status deployment/user-deployment
+
+# 이미지·Probe·Resource 설정 확인
+kubectl get deployment user-deployment -o yaml | \
+  grep -E 'image:|startupProbe:|readinessProbe:|livenessProbe:|requests:|limits:'</pre><div class="check-grid"><div class="check-item"><b>Deployment</b>Available 2/2</div><div class="check-item"><b>Pod</b>Running, Ready 1/1</div><div class="check-item"><b>Service</b>ClusterIP, port 8080</div><div class="check-item"><b>Endpoint</b>Ready Pod IP 2개</div></div></section>
+<section class="panel"><h2>9차시 전달 체크리스트</h2><ul><li><code>apdev</code> Namespace에서 작업합니다.</li><li>USER Deployment의 Replica 2개가 모두 Available입니다.</li><li>Deployment selector, Pod label, Service selector가 모두 <code>app: user</code>로 일치합니다.</li><li>Service는 <code>ClusterIP</code>이며 port와 targetPort가 8080으로 연결됩니다.</li><li>startup, readiness, liveness Probe가 <code>/healthcheck</code>를 사용합니다.</li><li>Service Endpoint에 Ready Pod IP가 등록됩니다.</li><li>Pod 삭제 후 자동복구와 Rolling Update·Rollback을 검증했습니다.</li><li>Secret 원문과 <code>app.env</code>는 Git 및 제출 파일에 포함되지 않습니다.</li></ul><p>공식 참고: <a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/">Deployment</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/service/">Service</a>, <a href="https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/">Liveness, Readiness, Startup Probes</a>, <a href="https://kubernetes.io/docs/tasks/run-application/rolling-update-replication-controller/">Rolling Update</a></p></section>`;}if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
 </script></body></html>
