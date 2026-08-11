@@ -1230,10 +1230,302 @@ for APP in user product stress; do
 done
 
 kubectl get pod,service -o wide</pre></section>
-<section class="panel"><h2>다운로드용 앱 배포 파일</h2><p>아래 ZIP은 과제에서 제공하는 실제 바이너리를 대신하는 파일이 아니라, 세 이미지를 EKS에 올릴 때 사용하는 <strong>배포 템플릿 묶음</strong>입니다. ECR 이미지 digest, RDS Endpoint, S3 버킷 값을 교체한 뒤 사용하세요.</p><div class="check-grid"><a class="check-item" href="downloads/lesson09-app-deployment-kit.zip" download><b>전체 ZIP 다운로드</b>YAML·배포·검증 스크립트·README</a><a class="check-item" href="downloads/lesson09/app-deployments.yaml" download><b>app-deployments.yaml</b>세 Deployment·Service</a><a class="check-item" href="downloads/lesson09/deploy.sh" download><b>deploy.sh</b>Secret 생성과 Rollout</a><a class="check-item" href="downloads/lesson09/smoke-test.sh" download><b>smoke-test.sh</b>Healthcheck·API 검증</a></div><pre class="code-block">unzip lesson09-app-deployment-kit.zip -d lesson09-app
+<section class="panel"><h2>공식 API·SLO 최종 대조</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>대상</th><th>API</th><th>정상 코드</th><th>가용성 기준</th><th>SLO</th></tr></thead><tbody><tr><td>USER</td><td>POST·GET <code>/v1/user</code></td><td>201·200</td><td>5초 이하</td><td>0.2초 이하</td></tr><tr><td>PRODUCT</td><td>POST·GET·PUT <code>/v1/product</code></td><td>201·200·200</td><td>5초 이하</td><td>0.2초 이하</td></tr><tr><td>STRESS</td><td>POST <code>/v1/stress</code></td><td>201</td><td>5초 이하</td><td>1초 이하</td></tr><tr><td>공통</td><td>GET <code>/healthcheck</code></td><td>200</td><td>Pod Ready 조건</td><td>빠른 내부 응답</td></tr></tbody></table></div><p class="tip">모든 정상 요청의 <code>requestid</code>와 <code>uuid</code>를 그대로 전달하고 Request·Response를 중간에서 변조하지 않습니다. 공식 채점에는 주최 측 제공 바이너리를 우선 사용합니다.</p></section><section class="panel"><h2>다운로드용 앱 배포 파일</h2><p>아래 ZIP은 과제에서 제공하는 실제 바이너리를 대신하는 파일이 아니라, 세 이미지를 EKS에 올릴 때 사용하는 <strong>배포 템플릿 묶음</strong>입니다. ECR 이미지 digest, RDS Endpoint, S3 버킷 값을 교체한 뒤 사용하세요.</p><div class="check-grid"><a class="check-item" href="downloads/lesson09-app-deployment-kit.zip" download><b>전체 ZIP 다운로드</b>YAML·배포·검증 스크립트·README</a><a class="check-item" href="downloads/lesson09/app-deployments.yaml" download><b>app-deployments.yaml</b>세 Deployment·Service</a><a class="check-item" href="downloads/lesson09/deploy.sh" download><b>deploy.sh</b>Secret 생성과 Rollout</a><a class="check-item" href="downloads/lesson09/smoke-test.sh" download><b>smoke-test.sh</b>Healthcheck·API 검증<a class="check-item" href="downloads/lesson09-practice-apps-source.zip" download><b>연습용 Go 소스</b>공식 바이너리가 없는 경우의 교육용 구현</a><a class="check-item" href="downloads/lesson09-practice-apps-linux-amd64.zip" download><b>연습용 linux/amd64 바이너리</b>USER·PRODUCT·STRESS 빌드 파일</a></div><pre class="code-block">unzip lesson09-app-deployment-kit.zip -d lesson09-app
 cd lesson09-app
 vi app-deployments.yaml
 chmod +x deploy.sh smoke-test.sh
 ./deploy.sh
-./smoke-test.sh</pre><p class="tip">원본 USER·PRODUCT·STRESS 바이너리는 공식 과제 제공 파일을 사용해야 합니다. 이 다운로드에는 비밀번호, AWS 자격 증명, 실제 계정 ID가 포함되어 있지 않습니다.</p></section><section class="panel"><h2>10차시 전달 체크리스트</h2><ul><li>USER·PRODUCT·STRESS가 각각 별도 Deployment와 ClusterIP Service로 배포됐습니다.</li><li>USER 2개, PRODUCT 2개, STRESS 1개 Pod가 모두 Ready입니다.</li><li>각 Service selector와 Pod label이 일치하고 Ready Endpoint가 등록됩니다.</li><li>세 앱의 <code>/healthcheck</code>가 Cluster 내부 DNS로 200을 반환합니다.</li><li>USER·PRODUCT의 RDS 조회와 STRESS 단일 요청이 성공합니다.</li><li>세 이미지는 검증한 ECR digest로 고정됐습니다.</li><li>비밀번호와 AWS Access Key가 Deployment YAML이나 이미지에 없습니다.</li><li>임시 <code>api-check</code> Pod와 반복 STRESS 요청을 정리했습니다.</li><li>10차시 Ingress가 연결할 Service 이름과 포트가 확정됐습니다.</li></ul><p>공식 참고: <a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/">Deployment</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/service/">Service</a>, <a href="https://kubernetes.io/docs/concepts/configuration/configmap/">ConfigMap</a>, <a href="https://kubernetes.io/docs/concepts/configuration/secret/">Secret</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/">Service DNS</a></p></section>`;}if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
+./smoke-test.sh</pre><p class="tip">원본 USER·PRODUCT·STRESS 바이너리는 공식 과제 제공 파일을 사용해야 합니다. 이 다운로드에는 비밀번호, AWS 자격 증명, 실제 계정 ID가 포함되어 있지 않습니다.</p></section><section class="panel"><h2>10차시 전달 체크리스트</h2><ul><li>USER·PRODUCT·STRESS가 각각 별도 Deployment와 ClusterIP Service로 배포됐습니다.</li><li>USER 2개, PRODUCT 2개, STRESS 1개 Pod가 모두 Ready입니다.</li><li>각 Service selector와 Pod label이 일치하고 Ready Endpoint가 등록됩니다.</li><li>세 앱의 <code>/healthcheck</code>가 Cluster 내부 DNS로 200을 반환합니다.</li><li>USER·PRODUCT의 RDS 조회와 STRESS 단일 요청이 성공합니다.</li><li>세 이미지는 검증한 ECR digest로 고정됐습니다.</li><li>비밀번호와 AWS Access Key가 Deployment YAML이나 이미지에 없습니다.</li><li>임시 <code>api-check</code> Pod와 반복 STRESS 요청을 정리했습니다.</li><li>10차시 Ingress가 연결할 Service 이름과 포트가 확정됐습니다.</li></ul><p>공식 참고: <a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/">Deployment</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/service/">Service</a>, <a href="https://kubernetes.io/docs/concepts/configuration/configmap/">ConfigMap</a>, <a href="https://kubernetes.io/docs/concepts/configuration/secret/">Secret</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/">Service DNS</a></p></section>`;}if(n===10){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>단일 Endpoint 아키텍처</h2><div class="diagram">Internet
+   │ http://&lt;ALB_DNS&gt;
+   ▼
+AWS Application Load Balancer
+   ├─ /v1/user*    → user-service:8080
+   ├─ /v1/product* → product-service:8080
+   ├─ /v1/stress*  → stress-service:8080
+   └─ /healthcheck → user-service:8080</div><p>이번 차시의 제출 후보는 프로토콜과 ALB DNS만 포함한 <code>http://&lt;ALB_DNS&gt;</code>입니다. 11차시에서 S3 이미지를 같은 주소에 결합하면 최종 Endpoint는 CloudFront HTTPS 주소로 바뀝니다.</p></section>
+<section class="panel"><h2>1. 사전 조건 확인</h2><pre class="code-block">export AWS_REGION=ap-northeast-2
+export CLUSTER_NAME=apdev-eks-cluster
+export NAMESPACE=apdev
+export VPC_ID=$(aws eks describe-cluster \
+  --name "$CLUSTER_NAME" --region "$AWS_REGION" \
+  --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+kubectl get nodes
+kubectl -n apdev get deployment,service,endpoints
+helm version
+aws sts get-caller-identity
+printf 'VPC_ID=%s\n' "$VPC_ID"</pre><p class="tip">세 Deployment가 모두 Available이고 세 Service에 Endpoint가 등록된 상태에서 시작합니다.</p></section>
+<section class="panel"><h2>2. Public Subnet 태그 확인</h2><pre class="code-block">aws ec2 describe-subnets \
+  --filters Name=vpc-id,Values="$VPC_ID" \
+  --query 'Subnets[].{id:SubnetId,az:AvailabilityZone,cidr:CidrBlock,tags:Tags}' \
+  --output table
+
+aws ec2 create-tags \
+  --resources &lt;PUBLIC_A_SUBNET_ID&gt; &lt;PUBLIC_C_SUBNET_ID&gt; \
+  --tags Key=kubernetes.io/role/elb,Value=1
+
+aws ec2 create-tags \
+  --resources &lt;PRIVATE_A_SUBNET_ID&gt; &lt;PRIVATE_C_SUBNET_ID&gt; \
+  --tags Key=kubernetes.io/role/internal-elb,Value=1</pre><p>Internet-facing ALB는 서로 다른 AZ의 Public Subnet 두 개를 사용해야 합니다.</p></section>
+<section class="panel"><h2>3. Load Balancer Controller IAM Policy</h2><pre class="code-block">curl -fsSLo iam_policy.json \
+  https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+
+POLICY_ARN=arn:aws:iam::$AWS_ACCOUNT_ID:policy/AWSLoadBalancerControllerIAMPolicy
+aws iam create-policy \
+  --policy-name AWSLoadBalancerControllerIAMPolicy \
+  --policy-document file://iam_policy.json || true
+
+aws iam get-policy --policy-arn "$POLICY_ARN"</pre><p class="tip">이미 Policy가 있으면 <code>EntityAlreadyExists</code>가 발생할 수 있습니다. 이때 기존 ARN을 확인하고 계속합니다.</p></section>
+<section class="panel"><h2>4. Controller ServiceAccount 권한 연결</h2><pre class="code-block">eksctl create iamserviceaccount \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --namespace kube-system \
+  --name aws-load-balancer-controller \
+  --attach-policy-arn "$POLICY_ARN" \
+  --override-existing-serviceaccounts \
+  --approve
+
+kubectl -n kube-system get serviceaccount \
+  aws-load-balancer-controller -o yaml</pre><p>대회 환경에서 EKS Pod Identity를 사용하도록 지정된 경우에는 동일 IAM Policy를 Pod Identity Role에 붙이고 해당 ServiceAccount와 Association합니다. 한 Controller에 IRSA와 Pod Identity를 중복 구성하지 않습니다.</p></section>
+<section class="panel"><h2>5. Helm으로 Controller 설치</h2><pre class="code-block">helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+helm upgrade --install aws-load-balancer-controller \
+  eks/aws-load-balancer-controller \
+  --namespace kube-system \
+  --set clusterName="$CLUSTER_NAME" \
+  --set region="$AWS_REGION" \
+  --set vpcId="$VPC_ID" \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller
+
+kubectl -n kube-system rollout status \
+  deployment/aws-load-balancer-controller --timeout=5m
+kubectl -n kube-system get deployment,pod \
+  -l app.kubernetes.io/name=aws-load-balancer-controller</pre></section>
+<section class="panel"><h2>6. API Ingress YAML</h2><pre class="code-block">cat &gt; 50-api-ingress.yaml &lt;&lt;'EOF'
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: apdev
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/success-codes: '200'
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /v1/user
+            pathType: Prefix
+            backend:
+              service: {name: user-service, port: {number: 8080}}
+          - path: /v1/product
+            pathType: Prefix
+            backend:
+              service: {name: product-service, port: {number: 8080}}
+          - path: /v1/stress
+            pathType: Prefix
+            backend:
+              service: {name: stress-service, port: {number: 8080}}
+          - path: /healthcheck
+            pathType: Exact
+            backend:
+              service: {name: user-service, port: {number: 8080}}
+EOF
+kubectl apply -f 50-api-ingress.yaml</pre></section>
+<section class="panel"><h2>7. ALB 생성과 Target 확인</h2><pre class="code-block">kubectl get ingress api-ingress -w
+# ADDRESS가 표시되면 Ctrl+C
+
+kubectl describe ingress api-ingress
+kubectl get targetgroupbinding -n apdev
+kubectl get events -n apdev --sort-by='.lastTimestamp' | tail -30
+
+export ALB_DNS=$(kubectl get ingress api-ingress \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+printf 'ALB_DNS=%s\n' "$ALB_DNS"</pre><p class="tip">ALB 생성에는 수 분이 걸릴 수 있습니다. Ingress ADDRESS가 비어 있으면 Controller 로그와 Ingress Events를 확인합니다.</p></section>
+<section class="panel"><h2>8. 단일 Endpoint API 검증</h2><pre class="code-block">export ENDPOINT=http://$ALB_DNS
+export REQUEST_ID=999999999999
+export UUID=7c5a3c6a-758f-4bc5-9bdf-3e573a0ad729
+
+curl -i "$ENDPOINT/healthcheck"
+curl -i -G "$ENDPOINT/v1/user" \
+  --data-urlencode 'email=dbdump500001@example.org' \
+  --data-urlencode "requestid=$REQUEST_ID" \
+  --data-urlencode "uuid=$UUID"
+curl -i -G "$ENDPOINT/v1/product" \
+  --data-urlencode 'id=dbdump500001' \
+  --data-urlencode "requestid=$REQUEST_ID" \
+  --data-urlencode "uuid=$UUID"
+curl -i -X POST "$ENDPOINT/v1/stress" \
+  -H 'Content-Type: application/json' \
+  -d "{\"requestid\":\"$REQUEST_ID\",\"uuid\":\"$UUID\",\"length\":256}"</pre><p>정상 코드는 USER·PRODUCT 조회 200, STRESS POST 201입니다.</p></section>
+<section class="panel"><h2>9. 제출 형식과 Endpoint 기록</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>입력 예</th><th>판정</th><th>이유</th></tr></thead><tbody><tr><td><code>http://k8s-apdev-....elb.amazonaws.com</code></td><td>정상</td><td>프로토콜과 주소만 포함</td></tr><tr><td><code>k8s-apdev-....elb.amazonaws.com</code></td><td>오류</td><td>프로토콜 누락</td></tr><tr><td><code>http://...amazonaws.com/v1/</code></td><td>오류</td><td>경로 포함</td></tr></tbody></table></div><pre class="code-block">printf '%s\n' "$ENDPOINT" | tee endpoint.txt</pre></section>
+<section class="panel"><h2>10. HTTPS 선택 구성</h2><p>보유 도메인과 ACM 인증서가 있으면 다음 Annotation으로 443을 사용합니다. 인증서는 ALB와 같은 서울 리전에 있어야 합니다.</p><pre class="code-block">alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-northeast-2:&lt;ACCOUNT_ID&gt;:certificate/&lt;ID&gt;
+alb.ingress.kubernetes.io/ssl-redirect: '443'</pre><p class="tip">11차시 CloudFront를 최종 Endpoint로 사용하면 CloudFront 기본 도메인에서 HTTPS가 제공되므로 데모용 개인 도메인이 없어도 됩니다.</p></section>
+<section class="panel"><h2>11. 무중단·가용성 확인</h2><pre class="code-block">kubectl get pod -n apdev -o wide
+kubectl get poddisruptionbudget -n apdev
+
+for APP in user product; do
+  kubectl scale deployment/$APP-deployment --replicas=2
+  kubectl rollout status deployment/$APP-deployment
+ done
+
+# 한 USER Pod를 삭제하면서 외부 healthcheck 반복
+while true; do curl -s -o /dev/null -w '%{http_code}\n' "$ENDPOINT/healthcheck"; sleep 1; done</pre><p>다른 터미널에서 USER Pod 하나를 삭제하고 5xx 또는 장시간 중단이 발생하지 않는지 확인합니다.</p></section>
+<section class="panel"><h2>12. Controller·Ingress 장애 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>증상</th><th>원인</th><th>조치</th></tr></thead><tbody><tr><td>Ingress ADDRESS 없음</td><td>Controller IAM·Subnet 태그</td><td>Controller logs, Ingress Events 확인</td></tr><tr><td>ALB 503</td><td>Healthy Target 없음</td><td>Service Endpoint와 Target Group 상태 확인</td></tr><tr><td>ALB 502</td><td>앱 포트·응답 오류</td><td>targetPort 8080과 Pod logs 확인</td></tr><tr><td>ALB 404</td><td>Ingress path 불일치</td><td>요청 경로와 Prefix 규칙 확인</td></tr><tr><td>Target unhealthy</td><td>healthcheck 경로·SG 오류</td><td><code>/healthcheck</code> 200과 Node/Pod SG 확인</td></tr></tbody></table></div></section>
+<section class="panel"><h2>10차시 다운로드 파일</h2><div class="check-grid"><a class="check-item" href="downloads/lesson10/api-ingress.yaml" download><b>api-ingress.yaml</b>ALB 경로 라우팅 Manifest</a></div><pre class="code-block">curl -fsSLO https://rani0380.github.io/2026_nationalskills/cloud-course/downloads/lesson10/api-ingress.yaml
+kubectl apply -f api-ingress.yaml</pre></section><section class="panel"><h2>11차시 전달 체크리스트</h2><ul><li>AWS Load Balancer Controller가 Available입니다.</li><li>Internet-facing ALB가 두 Public Subnet을 사용합니다.</li><li>세 API가 동일 ALB DNS와 각 경로에서 정상 코드를 반환합니다.</li><li>Ingress target-type은 <code>ip</code>이며 Ready Pod가 Target입니다.</li><li>제출 후보 Endpoint에는 프로토콜이 있고 경로는 없습니다.</li><li>Pod 삭제·Rolling Update 중 API 가용성을 확인했습니다.</li><li>11차시에서 CloudFront가 ALB와 S3를 하나의 HTTPS Endpoint로 결합할 준비가 됐습니다.</li></ul><p>공식 참고: <a href="https://docs.aws.amazon.com/eks/latest/userguide/aws-load-balancer-controller.html">EKS Load Balancer Controller</a>, <a href="https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/">Controller 문서</a>, <a href="https://kubernetes.io/docs/concepts/services-networking/ingress/">Kubernetes Ingress</a></p></section>`;}if(n===11){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>동일 Endpoint 이미지 아키텍처</h2><div class="diagram">Internet → https://&lt;CLOUDFRONT_DOMAIN&gt;
+   ├─ /images/*  → CloudFront Function으로 /images 제거 → Private S3(OAC)
+   └─ 그 외 경로 → ALB Origin → EKS Ingress → USER/PRODUCT/STRESS
+
+PRODUCT Pod ── Pod IAM / PutObject ──→ Private S3</div><p>최종 채점 Endpoint는 CloudFront 프로토콜과 도메인만 제출합니다. API와 이미지가 같은 주소를 사용하면서 S3 버킷은 공개하지 않습니다.</p></section>
+<section class="panel"><h2>1. 버킷 생성과 기본 보안</h2><pre class="code-block">export AWS_REGION=ap-northeast-2
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export BUCKET=apdev-product-images-$AWS_ACCOUNT_ID
+
+aws s3api create-bucket \
+  --bucket "$BUCKET" \
+  --region "$AWS_REGION" \
+  --create-bucket-configuration LocationConstraint="$AWS_REGION"
+
+aws s3api put-public-access-block \
+  --bucket "$BUCKET" \
+  --public-access-block-configuration \
+'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
+
+aws s3api put-bucket-encryption --bucket "$BUCKET" \
+  --server-side-encryption-configuration \
+'{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+aws s3api put-bucket-versioning --bucket "$BUCKET" \
+  --versioning-configuration Status=Enabled</pre></section>
+<section class="panel"><h2>2. PRODUCT Pod 최소 IAM Policy</h2><pre class="code-block">cat &gt; product-s3-policy.json &lt;&lt;EOF
+{
+  "Version":"2012-10-17",
+  "Statement":[{
+    "Effect":"Allow",
+    "Action":["s3:PutObject","s3:GetObject"],
+    "Resource":"arn:aws:s3:::$BUCKET/*"
+  }]
+}
+EOF
+
+aws iam create-policy \
+  --policy-name apdev-product-s3-policy \
+  --policy-document file://product-s3-policy.json || true
+export PRODUCT_POLICY_ARN=arn:aws:iam::$AWS_ACCOUNT_ID:policy/apdev-product-s3-policy</pre><p class="tip">버킷 삭제, ACL 변경, 다른 버킷 접근 권한은 부여하지 않습니다.</p></section>
+<section class="panel"><h2>3. EKS Pod Identity Role</h2><pre class="code-block">cat &gt; pod-identity-trust.json &lt;&lt;'EOF'
+{
+  "Version":"2012-10-17",
+  "Statement":[{
+    "Effect":"Allow",
+    "Principal":{"Service":"pods.eks.amazonaws.com"},
+    "Action":["sts:AssumeRole","sts:TagSession"]
+  }]
+}
+EOF
+
+aws iam create-role \
+  --role-name apdev-product-pod-role \
+  --assume-role-policy-document file://pod-identity-trust.json || true
+aws iam attach-role-policy \
+  --role-name apdev-product-pod-role \
+  --policy-arn "$PRODUCT_POLICY_ARN"
+export PRODUCT_ROLE_ARN=$(aws iam get-role \
+  --role-name apdev-product-pod-role \
+  --query 'Role.Arn' --output text)</pre></section>
+<section class="panel"><h2>4. ServiceAccount·Association</h2><pre class="code-block">kubectl -n apdev create serviceaccount product-sa \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+aws eks create-pod-identity-association \
+  --cluster-name apdev-eks-cluster \
+  --namespace apdev \
+  --service-account product-sa \
+  --role-arn "$PRODUCT_ROLE_ARN"
+
+kubectl -n kube-system get daemonset eks-pod-identity-agent
+aws eks list-pod-identity-associations \
+  --cluster-name apdev-eks-cluster</pre><p>Agent가 없다면 EKS Add-on에서 Pod Identity Agent를 먼저 설치합니다. 기존 IRSA를 사용하는 환경에서는 같은 역할을 중복 연결하지 않습니다.</p></section>
+<section class="panel"><h2>5. PRODUCT Deployment 연결</h2><pre class="code-block">kubectl -n apdev patch deployment product-deployment \
+  --type merge \
+  -p '{"spec":{"template":{"spec":{"serviceAccountName":"product-sa"}}}}'
+
+kubectl -n apdev set env deployment/product-deployment \
+  AWS_REGION=ap-northeast-2 S3_BUCKET="$BUCKET"
+kubectl -n apdev rollout status deployment/product-deployment --timeout=5m
+
+kubectl -n apdev get pod -l app=product \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" sa="}{.spec.serviceAccountName}{"\n"}{end}'</pre><p class="tip">공식 바이너리의 환경변수 표에는 MySQL 값만 명시되어 있습니다. 주최 측 원본 바이너리가 별도 S3 변수 없이 동작한다면 임의 변수를 강제하지 말고 공식 동작과 로그를 우선합니다. 제공하는 연습용 앱에서만 <code>S3_BUCKET</code>을 사용합니다.</p></section>
+<section class="panel"><h2>6. PRODUCT 이미지 업로드</h2><pre class="code-block">export ALB_DNS=$(kubectl -n apdev get ingress api-ingress \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+export API=http://$ALB_DNS
+export REQUEST_ID=999999999999
+export UUID=7c5a3c6a-758f-4bc5-9bdf-3e573a0ad729
+
+printf '\x89PNG\r\n\x1a\npractice-image' &gt; small.png
+curl -i -X PUT "$API/v1/product" \
+  -F "requestid=$REQUEST_ID" \
+  -F "uuid=$UUID" \
+  -F 'id=dbdump500001' \
+  -F 'image=@small.png;type=image/png'</pre><p>기대 응답은 200입니다. 실제 지급 바이너리에서 multipart 필드명이 다르게 제공되면 공식 값을 우선합니다.</p></section>
+<section class="panel"><h2>7. S3 객체와 DB 경로 확인</h2><pre class="code-block">aws s3api list-objects-v2 --bucket "$BUCKET" \
+  --query 'Contents[].{key:Key,size:Size,modified:LastModified}' \
+  --output table
+
+aws s3api head-object \
+  --bucket "$BUCKET" --key &lt;UPLOADED_OBJECT_KEY&gt;
+
+mysql -h &lt;RDS_ENDPOINT&gt; -u appuser -p -D dev \
+  -e "SELECT id,image_path FROM product WHERE id='dbdump500001';"</pre><p class="tip">공식 예시는 S3 객체 <code>/product50001.jpg</code>가 외부에서 <code>/images/product50001.jpg</code>로 제공되는 구조입니다.</p></section>
+<section class="panel"><h2>8. CloudFront Function URI Rewrite</h2><pre class="code-block">function handler(event) {
+  var request = event.request;
+  if (request.uri.startsWith('/images/')) {
+    request.uri = request.uri.substring('/images'.length);
+  }
+  return request;
+}</pre><p>Viewer Request 단계에 연결하면 외부의 <code>/images/product50001.jpg</code>를 S3의 <code>/product50001.jpg</code>로 요청합니다. Function을 Publish한 뒤 Image Behavior에 연결합니다.</p></section>
+<section class="panel"><h2>9. CloudFront Origin 구성표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>Origin</th><th>주소</th><th>접근</th><th>용도</th></tr></thead><tbody><tr><td><code>api-alb-origin</code></td><td>10차시 ALB DNS</td><td>HTTP 80</td><td>세 API와 healthcheck</td></tr><tr><td><code>private-s3-origin</code></td><td>S3 REST Endpoint</td><td>Origin Access Control</td><td>상품 이미지</td></tr></tbody></table></div><p class="tip">S3 Website Endpoint가 아니라 일반 S3 Bucket Origin과 OAC를 사용해야 Block Public Access를 유지할 수 있습니다.</p></section>
+<section class="panel"><h2>10. CloudFront Behavior 구성표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>우선순위</th><th>Path pattern</th><th>Origin</th><th>Method·Cache</th></tr></thead><tbody><tr><td>1</td><td><code>/images/*</code></td><td>Private S3</td><td>GET/HEAD, CachingOptimized, Rewrite Function</td></tr><tr><td>Default</td><td><code>*</code></td><td>ALB</td><td>모든 필요한 Method, CachingDisabled</td></tr></tbody></table></div><ol><li>CloudFront → Create distribution에서 ALB를 Default Origin으로 추가합니다.</li><li>Private S3 Origin을 추가하고 새 OAC를 생성합니다.</li><li><code>/images/*</code> Behavior를 S3 Origin에 연결합니다.</li><li>Viewer Request에 Rewrite Function을 연결합니다.</li><li>S3가 안내하는 OAC Bucket Policy를 적용합니다.</li></ol></section>
+<section class="panel"><h2>11. OAC Bucket Policy 검증</h2><p>CloudFront가 생성한 Policy는 대략 다음 조건을 포함해야 합니다.</p><pre class="code-block">{
+  "Effect":"Allow",
+  "Principal":{"Service":"cloudfront.amazonaws.com"},
+  "Action":"s3:GetObject",
+  "Resource":"arn:aws:s3:::&lt;BUCKET&gt;/*",
+  "Condition":{"StringEquals":{"AWS:SourceArn":"arn:aws:cloudfront::&lt;ACCOUNT_ID&gt;:distribution/&lt;DISTRIBUTION_ID&gt;"}}
+}</pre><p>특정 Distribution ARN으로 제한하며 Public Principal을 사용하지 않습니다.</p></section>
+<section class="panel"><h2>12. 동일 HTTPS Endpoint 검증</h2><pre class="code-block">export CF_DOMAIN=&lt;DISTRIBUTION_DOMAIN&gt;
+export ENDPOINT=https://$CF_DOMAIN
+
+curl -i "$ENDPOINT/healthcheck"
+curl -i -G "$ENDPOINT/v1/user" \
+  --data-urlencode 'email=dbdump500001@example.org' \
+  --data-urlencode 'requestid=999999999999' \
+  --data-urlencode 'uuid=7c5a3c6a-758f-4bc5-9bdf-3e573a0ad729'
+curl -i "$ENDPOINT/images/&lt;UPLOADED_OBJECT_KEY&gt;"
+
+curl -s -o /dev/null -w 'api=%{http_code} %{time_total}s\n' "$ENDPOINT/healthcheck"
+curl -s -o /dev/null -w 'image=%{http_code} %{time_total}s\n' "$ENDPOINT/images/&lt;UPLOADED_OBJECT_KEY&gt;"</pre><p>최종 입력값은 <code>https://&lt;DISTRIBUTION_DOMAIN&gt;</code>이며 경로를 포함하지 않습니다.</p></section>
+<section class="panel"><h2>13. 비공개·우회 접근 검사</h2><pre class="code-block">aws s3api get-public-access-block --bucket "$BUCKET"
+aws s3api get-bucket-policy-status --bucket "$BUCKET"
+
+# S3 객체 URL 직접 접근은 403이어야 함
+curl -s -o /dev/null -w 'direct-s3=%{http_code}\n' \
+  "https://$BUCKET.s3.$AWS_REGION.amazonaws.com/&lt;OBJECT_KEY&gt;"
+
+# CloudFront 경로는 200이어야 함
+curl -s -o /dev/null -w 'cloudfront=%{http_code}\n' \
+  "$ENDPOINT/images/&lt;OBJECT_KEY&gt;"</pre></section>
+<section class="panel"><h2>14. Image 장애 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>증상</th><th>원인</th><th>조치</th></tr></thead><tbody><tr><td>PRODUCT PUT 500</td><td>Pod IAM·버킷 설정</td><td>Product logs와 Association 확인</td></tr><tr><td>CloudFront Image 403</td><td>OAC Policy·Key 불일치</td><td>Distribution ARN과 Rewrite 결과 확인</td></tr><tr><td>CloudFront Image 404</td><td>객체 Key 없음</td><td>S3 list와 <code>image_path</code> 비교</td></tr><tr><td>API가 Cache됨</td><td>Default Behavior 정책 오류</td><td>ALB Behavior를 CachingDisabled로 변경</td></tr><tr><td>이미지 갱신 지연</td><td>같은 Key Cache</td><td>Versioned Key 권장 또는 Invalidation 실행</td></tr></tbody></table></div></section>
+<section class="panel"><h2>11차시 다운로드 파일</h2><div class="check-grid"><a class="check-item" href="downloads/lesson11/strip-images-prefix.js" download><b>strip-images-prefix.js</b>CloudFront URI Rewrite Function</a><a class="check-item" href="downloads/lesson11/product-s3-policy.json" download><b>product-s3-policy.json</b>PRODUCT Pod 최소 S3 Policy</a></div></section><section class="panel"><h2>12차시 전달 체크리스트</h2><ul><li>S3 Block Public Access 네 항목이 모두 활성화됐습니다.</li><li>PRODUCT Pod만 해당 버킷 Object 권한을 가집니다.</li><li>PRODUCT PUT이 200이고 객체와 DB <code>image_path</code>가 확인됩니다.</li><li>CloudFront Default Behavior는 ALB, <code>/images/*</code>는 Private S3입니다.</li><li>Rewrite Function이 외부 <code>/images/</code> 접두사를 제거합니다.</li><li>동일 HTTPS Endpoint에서 API와 이미지가 모두 정상입니다.</li><li>S3 직접 객체 URL은 공개되지 않습니다.</li><li>최종 Endpoint에는 프로토콜이 있고 경로는 없습니다.</li></ul><p>공식 참고: <a href="https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html">CloudFront OAC</a>, <a href="https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cloudfront-functions.html">CloudFront Functions</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html">EKS Pod Identity</a>, <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html">S3 Block Public Access</a></p></section>`;}if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
 </script></body></html>
