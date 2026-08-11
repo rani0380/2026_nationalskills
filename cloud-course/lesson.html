@@ -246,5 +246,125 @@ tail -F ~/app-test/logs/user.log</pre></section>
 <tr><td>즉시 프로세스 종료</td><td>필수 환경변수 누락</td><td>로그와 환경변수 SET 여부 확인</td></tr>
 </tbody></table></div></section>
 <section class="panel"><h2>최종 정리 체크리스트</h2><ul><li>세 앱의 healthcheck와 핵심 API 응답코드를 기록했습니다.</li><li>로그 파일과 바이너리 SHA-256 값을 보관했습니다.</li><li>실행 중인 STRESS 요청과 애플리케이션 프로세스를 모두 종료했습니다.</li><li><code>mysql.env</code> 권한이 600이며 Git에 포함되지 않았습니다.</li><li>테스트용 EC2가 더 이상 필요 없다면 종료가 아니라 <strong>삭제(terminate)</strong>했습니다.</li></ul></section>`;}
+if(n===5){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>컨테이너화 목표</h2><p>4차시에서 검증한 동일 바이너리를 변경 없이 이미지에 넣고, 설정은 실행 시 주입합니다. 이미지 자체에는 DB 비밀번호, RDS endpoint, AWS Access Key를 저장하지 않습니다.</p><div class="check-grid"><div class="check-item"><b>재현성</b>어디서 실행해도 같은 파일과 시작 명령</div><div class="check-item"><b>호환성</b>Linux <code>amd64</code> 이미지</div><div class="check-item"><b>보안</b>비루트 사용자와 Secret 외부 주입</div><div class="check-item"><b>운영성</b>stdout/stderr 로그와 TCP 8080</div></div></section>
+<section class="panel"><h2>이미지 구성 원칙</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>항목</th><th>권장 설정</th><th>이유</th></tr></thead><tbody>
+<tr><td>Runtime base</td><td>Amazon Linux 2023 minimal</td><td>지급 바이너리 검증 환경과 호환</td></tr>
+<tr><td>Platform</td><td><code>linux/amd64</code></td><td>x86 기반 EKS Node에서 실행</td></tr>
+<tr><td>Process user</td><td>UID <code>10001</code></td><td>root 권한 최소화</td></tr>
+<tr><td>Listen port</td><td>TCP <code>8080</code></td><td>애플리케이션 고정 포트</td></tr>
+<tr><td>Configuration</td><td><code>--env-file</code> 또는 K8s Secret</td><td>이미지와 설정 분리</td></tr>
+<tr><td>Logs</td><td>stdout / stderr</td><td>Docker·CloudWatch 수집 가능</td></tr>
+<tr><td>Image tag</td><td>변경 가능한 태그 + commit SHA</td><td>배포 버전 추적과 롤백</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>빌드 컨텍스트 준비</h2><pre class="code-block">cd ~/app-test
+mkdir -p docker/user docker/product docker/stress
+
+# 4차시에서 검증한 바이너리를 각 컨텍스트에 application 이름으로 복사
+cp bin/user    docker/user/application
+cp bin/product docker/product/application
+cp bin/stress  docker/stress/application
+
+sha256sum bin/user docker/user/application
+sha256sum bin/product docker/product/application
+sha256sum bin/stress docker/stress/application</pre><p class="tip">원본과 복사본의 SHA-256이 같아야 합니다. 빌드 컨텍스트에는 해당 앱 바이너리와 Dockerfile만 두어 불필요한 파일이나 자격증명이 이미지에 들어가지 않게 합니다.</p></section>
+<section class="panel"><h2>공통 Dockerfile</h2><p>아래 Dockerfile을 <code>docker/user</code>, <code>docker/product</code>, <code>docker/stress</code>에 각각 저장합니다.</p><pre class="code-block">FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal
+
+WORKDIR /app
+COPY --chown=10001:10001 application /app/application
+RUN chmod 0550 /app/application
+
+USER 10001:10001
+EXPOSE 8080
+ENV TZ=Asia/Seoul
+
+ENTRYPOINT ["/app/application"]</pre><p class="tip">지급 바이너리가 동적 라이브러리를 요구한다면 <code>ldd application</code> 결과를 확인하고 필요한 런타임 패키지만 추가합니다. 무작정 개발 도구 전체를 설치하지 않습니다.</p></section>
+<section class="panel"><h2>.dockerignore</h2><p>각 빌드 컨텍스트에 아래 파일을 둡니다. 현재 컨텍스트에는 application과 Dockerfile만 포함시킵니다.</p><pre class="code-block"># .dockerignore
+*
+!application
+!Dockerfile</pre></section>
+<section class="panel"><h2>Docker 설치와 Buildx 확인</h2><pre class="code-block">sudo dnf install -y docker
+sudo systemctl enable --now docker
+sudo usermod -aG docker ec2-user
+
+# 그룹 변경은 새 로그인 후 적용
+newgrp docker
+docker version
+docker buildx version</pre><p class="tip">대회에서 제공되는 작업 환경에 Docker가 이미 있으면 재설치하지 않습니다. Docker daemon 소켓을 모든 사용자에게 열기 위해 <code>chmod 666 /var/run/docker.sock</code>을 사용하는 방식은 피합니다.</p></section>
+<section class="panel"><h2>세 이미지 빌드</h2><pre class="code-block">cd ~/app-test
+
+for app in user product stress; do
+  docker buildx build \
+    --platform linux/amd64 \
+    --load \
+    -t "$app:local" \
+    "docker/$app"
+done
+
+docker image ls --format 'table {{.Repository}}\t{{.Tag}}\t{{.Size}}'</pre><p class="tip"><code>--load</code>는 단일 플랫폼 결과를 로컬 Docker image store에 넣습니다. 6차시에서 ECR로 바로 전송할 때는 <code>--push</code> 방식도 사용할 수 있습니다.</p></section>
+<section class="panel"><h2>이미지 정적 검증</h2><pre class="code-block">for app in user product stress; do
+  echo "=== $app ==="
+  docker image inspect "$app:local" \
+    --format 'os={{.Os}} arch={{.Architecture}} user={{.Config.User}} entrypoint={{json .Config.Entrypoint}}'
+  docker history --no-trunc "$app:local"
+done
+
+# 기대 결과
+# os=linux arch=amd64 user=10001:10001
+# entrypoint=["/app/application"]</pre><div class="check-grid"><div class="check-item"><b>Architecture</b><code>amd64</code></div><div class="check-item"><b>User</b><code>10001:10001</code></div><div class="check-item"><b>Entrypoint</b><code>/app/application</code></div><div class="check-item"><b>Secrets</b>history와 inspect에 없음</div></div></section>
+<section class="panel"><h2>USER 컨테이너 실행</h2><pre class="code-block">docker run --rm --name user-test \
+  --env-file ~/app-test/mysql.env \
+  -p 8080:8080 \
+  user:local</pre><p>다른 터미널에서 확인합니다.</p><pre class="code-block">curl -i http://127.0.0.1:8080/healthcheck
+curl -i -G http://127.0.0.1:8080/v1/user \
+  --data-urlencode 'email=dbdump500001@example.org' \
+  --data-urlencode 'requestid=999999999999' \
+  --data-urlencode 'uuid=7c5a3c6a-758f-4bc5-9bdf-3e573a0ad729'</pre></section>
+<section class="panel"><h2>PRODUCT 컨테이너 실행</h2><pre class="code-block">docker run --rm --name product-test \
+  --env-file ~/app-test/mysql.env \
+  -p 8080:8080 \
+  product:local</pre><p>다른 터미널에서 healthcheck, 상품 생성·조회, 이미지 PUT을 4차시와 동일하게 실행합니다. S3 접근은 Access Key를 컨테이너에 넣지 말고 최종 EKS Pod IAM 권한으로 처리합니다.</p></section>
+<section class="panel"><h2>STRESS 컨테이너 실행</h2><pre class="code-block">docker run --rm --name stress-test \
+  -p 8080:8080 \
+  stress:local
+
+# 다른 터미널에서 기능 확인 1회
+curl -i -X POST http://127.0.0.1:8080/v1/stress \
+  -H 'Content-Type: application/json' \
+  -d '{"requestid":"999999999999","uuid":"7c5a3c6a-758f-4bc5-9bdf-3e573a0ad729","length":256}'</pre></section>
+<section class="panel"><h2>백그라운드 실행과 로그 확인</h2><pre class="code-block">docker run -d --rm --name user-test \
+  --env-file ~/app-test/mysql.env \
+  -p 8080:8080 user:local
+
+curl -i http://127.0.0.1:8080/healthcheck
+docker logs --tail 50 user-test
+docker stats --no-stream user-test
+docker top user-test
+
+docker stop --time 10 user-test</pre><p class="tip">애플리케이션 로그가 컨테이너 내부 파일에만 저장되지 않고 <code>docker logs</code>에서 보여야 합니다. 테스트가 끝난 컨테이너는 다음 앱 실행 전 반드시 종료합니다.</p></section>
+<section class="panel"><h2>컨테이너 내부 보안 확인</h2><pre class="code-block">docker run --rm --entrypoint /bin/sh user:local -c '
+  id
+  test ! -w /app/application
+  env | grep -E "MYSQL_PASSWORD|AWS_SECRET" &amp;&amp; exit 1 || true
+'
+
+# 이미지 설정에 비밀번호가 들어갔는지 확인
+docker image inspect user:local | grep -Ei 'password|secret|access.key' || true</pre><p class="tip">실행 중 컨테이너에는 환경변수가 필요하지만 이미지 메타데이터에는 비밀값이 없어야 합니다. 실제 비밀번호를 명령행의 <code>-e MYSQL_PASSWORD=...</code>로 직접 입력하면 shell history와 프로세스 목록에 남을 수 있습니다.</p></section>
+<section class="panel"><h2>버전 태그 전략</h2><pre class="code-block">VERSION=v1
+GIT_SHA=$(git rev-parse --short HEAD 2&gt;/dev/null || echo manual)
+
+for app in user product stress; do
+  docker tag "$app:local" "$app:$VERSION"
+  docker tag "$app:local" "$app:$GIT_SHA"
+done</pre><div class="table-wrap"><table class="network-table"><thead><tr><th>태그</th><th>용도</th><th>배포 권장</th></tr></thead><tbody><tr><td><code>v1</code></td><td>사람이 이해하기 쉬운 릴리스</td><td>가능</td></tr><tr><td>Commit SHA</td><td>불변 버전 추적</td><td><strong>권장</strong></td></tr><tr><td><code>latest</code></td><td>현재 최신 이미지</td><td>운영 Deployment에서는 피함</td></tr></tbody></table></div></section>
+<section class="panel"><h2>오류별 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>증상</th><th>주요 원인</th><th>확인·해결</th></tr></thead><tbody>
+<tr><td>exec format error</td><td>ARM 이미지 또는 잘못된 바이너리</td><td><code>docker image inspect</code>에서 amd64 확인</td></tr>
+<tr><td>permission denied</td><td>ENTRYPOINT 실행 권한 없음</td><td>Dockerfile의 <code>chmod 0550</code> 확인</td></tr>
+<tr><td>container가 즉시 종료</td><td>필수 환경변수·라이브러리 누락</td><td><code>docker logs</code>, <code>ldd application</code></td></tr>
+<tr><td>DB timeout</td><td>RDS SG 또는 컨테이너 egress</td><td>호스트에서 endpoint:3306 확인 후 컨테이너 비교</td></tr>
+<tr><td>port is already allocated</td><td>기존 컨테이너가 8080 점유</td><td><code>docker ps</code> 후 기존 테스트 종료</td></tr>
+<tr><td>이미지가 너무 큼</td><td>불필요한 파일·패키지 포함</td><td><code>docker history</code>와 빌드 컨텍스트 점검</td></tr>
+</tbody></table></div></section>
+<section class="panel"><h2>ECR 전달 전 완료 기준</h2><ul><li>세 이미지의 OS/Architecture가 <code>linux/amd64</code>입니다.</li><li>세 컨테이너 모두 비루트 UID 10001로 실행됩니다.</li><li>healthcheck와 핵심 API가 4차시 결과와 동일합니다.</li><li><code>docker logs</code>에서 access log를 볼 수 있습니다.</li><li>이미지 history, config, layer에 DB·AWS 비밀정보가 없습니다.</li><li>테스트 컨테이너를 모두 종료했으며 불필요한 이미지 복제본이 없습니다.</li><li>Commit SHA 태그를 기록해 6차시 ECR push에 사용할 준비가 됐습니다.</li></ul></section>`;}
 if(n===1)prev.hidden=true;else prev.href=`lesson.html?lesson=${String(n-1).padStart(2,'0')}`;if(n===18)next.hidden=true;else next.href=`lesson.html?lesson=${String(n+1).padStart(2,'0')}`;
 </script></body></html>
