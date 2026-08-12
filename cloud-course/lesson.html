@@ -268,14 +268,35 @@ ROLLBACK;</pre><div class="check-grid"><div class="check-item"><b>연결</b>EKS 
 </tbody></table></div></section>`;}
 if(n===4){document.getElementById('lesson-extra').innerHTML=`
 <section class="panel"><h2>단독 실행의 목적</h2><p>컨테이너와 EKS를 만들기 전에 바이너리 자체, RDS 연결, API 규격을 먼저 검증합니다. 이 단계에서 실패하면 Docker나 Kubernetes 문제가 아니라 애플리케이션·환경변수·DB 문제로 범위를 좁힐 수 있습니다.</p><div class="check-grid"><div class="check-item"><b>USER</b>POST/GET 및 RDS 읽기·쓰기</div><div class="check-item"><b>PRODUCT</b>POST/GET/PUT 이미지 업로드</div><div class="check-item"><b>STRESS</b>CPU 부하 요청과 응답시간</div><div class="check-item"><b>공통</b>healthcheck, 403, 404, access log</div></div></section>
-<section class="panel"><h2>실행 환경 체크표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>항목</th><th>기준</th><th>확인 명령</th></tr></thead><tbody>
-<tr><td>OS</td><td>Amazon Linux 2023</td><td><code>cat /etc/os-release</code></td></tr>
-<tr><td>Architecture</td><td>x86_64 / amd64</td><td><code>uname -m</code></td></tr>
-<tr><td>EC2 type</td><td><code>t3.medium</code></td><td>EC2 Instance details</td></tr>
-<tr><td>Application port</td><td>TCP <code>8080</code></td><td><code>ss -lntp | grep :8080</code></td></tr>
-<tr><td>Timezone</td><td>KST / Asia/Seoul</td><td><code>timedatectl</code></td></tr>
-<tr><td>RDS access</td><td>Endpoint TCP 3306</td><td><code>nc -vz &lt;RDS_ENDPOINT&gt; 3306</code></td></tr>
-</tbody></table></div><p class="tip">세 바이너리는 모두 8080을 사용하므로 한 호스트에서는 <strong>한 번에 하나씩</strong> 실행해 검증합니다. 별도의 미사용 EC2를 계속 두면 비용과 채점에 불리할 수 있으므로 테스트용 인스턴스는 검증 후 종료하거나 삭제합니다.</p></section>
+<section class="panel"><h2>실행 환경 체크표</h2><p>이 표는 <strong>4차시 단독 실행에 사용할 EC2</strong>를 기준으로 확인합니다. 먼저 AWS 콘솔에서 인스턴스를 찾고 Session Manager 또는 SSH로 그 EC2에 접속한 뒤 터미널 명령을 실행합니다. RDS Endpoint만 RDS 콘솔에서 복사합니다.</p><div class="diagram">AWS Console
+├── EC2 → Instances → 실습용 인스턴스 → Instance details
+│      └── Connect → Session Manager 또는 SSH → 아래 Linux 명령 실행
+└── RDS → Databases → apdev-rds-instance → Connectivity &amp; security
+       └── Endpoint와 Port 3306 확인</div><div class="table-wrap"><table class="network-table"><thead><tr><th>항목</th><th>기준</th><th>어디에서 확인?</th><th>확인 방법</th><th>정상 결과</th></tr></thead><tbody>
+<tr><td>OS</td><td>Amazon Linux 2023</td><td>실습용 EC2 터미널</td><td><code>cat /etc/os-release</code></td><td><code>NAME="Amazon Linux"</code>, <code>VERSION="2023"</code></td></tr>
+<tr><td>Architecture</td><td>x86_64 / amd64</td><td>실습용 EC2 터미널</td><td><code>uname -m</code></td><td><code>x86_64</code></td></tr>
+<tr><td>EC2 type</td><td><code>t3.medium</code></td><td>AWS Console → EC2 → Instances</td><td>인스턴스 선택 → Details → Instance type</td><td><code>t3.medium</code></td></tr>
+<tr><td>Application port</td><td>TCP <code>8080</code></td><td>앱을 실행한 EC2 터미널</td><td><code>sudo ss -lntp | grep ':8080'</code></td><td><code>LISTEN</code>과 <code>:8080</code></td></tr>
+<tr><td>Timezone</td><td>KST / Asia/Seoul</td><td>실습용 EC2 터미널</td><td><code>timedatectl</code></td><td><code>Time zone: Asia/Seoul (KST, +0900)</code></td></tr>
+<tr><td>RDS Endpoint</td><td><code>apdev-rds-instance</code> 주소</td><td>AWS Console → RDS → Databases</td><td>Connectivity &amp; security → Endpoint</td><td><code>*.ap-northeast-2.rds.amazonaws.com</code></td></tr>
+<tr><td>RDS access</td><td>Endpoint TCP 3306</td><td>실습용 EC2 터미널</td><td><code>nc -vz -w 5 "$RDS_ENDPOINT" 3306</code></td><td><code>succeeded</code> 또는 <code>open</code></td></tr>
+</tbody></table></div><p class="tip"><strong>포트 8080 확인은 애플리케이션을 실행한 뒤</strong> 다른 터미널에서 수행합니다. 실행 전 <code>grep</code> 결과가 없는 것은 정상입니다. 세 바이너리는 모두 8080을 사용하므로 한 EC2에서는 한 번에 하나씩 실행해 검증합니다.</p></section>
+<section class="panel"><h2>한 번에 실행 환경 확인하기</h2><p>EC2에 접속한 상태에서 다음 블록을 실행하면 OS·Architecture·Timezone·EC2 타입·RDS 연결을 한 번에 확인할 수 있습니다. EC2 타입은 Instance Metadata Service에서 읽습니다.</p><pre class="code-block">export RDS_ENDPOINT=&lt;RDS_ENDPOINT&gt;
+
+TOKEN=$(curl -fsS -X PUT   -H 'X-aws-ec2-metadata-token-ttl-seconds: 300'   http://169.254.169.254/latest/api/token)
+
+INSTANCE_TYPE=$(curl -fsS   -H "X-aws-ec2-metadata-token: $TOKEN"   http://169.254.169.254/latest/meta-data/instance-type)
+
+echo '=== OS ==='
+grep -E '^(NAME|VERSION)=' /etc/os-release
+echo '=== Architecture ==='
+uname -m
+echo '=== EC2 type ==='
+echo "$INSTANCE_TYPE"
+echo '=== Timezone ==='
+timedatectl show -p Timezone --value
+echo '=== RDS TCP 3306 ==='
+nc -vz -w 5 "$RDS_ENDPOINT" 3306</pre><p class="tip">기대 결과는 Amazon Linux 2023, <code>x86_64</code>, <code>t3.medium</code>, <code>Asia/Seoul</code>, RDS 3306 연결 성공입니다. 다른 결과가 하나라도 나오면 애플리케이션 실행 전에 EC2 또는 네트워크 구성을 먼저 수정합니다.</p></section>
 <section class="panel"><h2>사전 준비</h2><pre class="code-block">sudo timedatectl set-timezone Asia/Seoul
 sudo dnf install -y mariadb105 nc jq
 
