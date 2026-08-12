@@ -547,15 +547,59 @@ for app in user product stress; do
 done</pre><pre class="code-block"># 각 앱에서 기대하는 출력
 .dockerignore
 Dockerfile
-application</pre><p class="tip">출력에 <code>mysql.env</code>, <code>*.log</code>, SSH Key 또는 다른 앱 바이너리가 보이면 빌드 전에 해당 파일을 폴더 밖으로 옮깁니다.</p></section><section class="panel"><h2>Docker 설치와 Buildx 확인</h2><pre class="code-block">sudo dnf install -y docker
-sudo systemctl enable --now docker
-sudo usermod -aG docker ec2-user
+application</pre><p class="tip">출력에 <code>mysql.env</code>, <code>*.log</code>, SSH Key 또는 다른 앱 바이너리가 보이면 빌드 전에 해당 파일을 폴더 밖으로 옮깁니다.</p></section><section class="panel"><h2>Docker는 어디에 설치하나요?</h2><p>Docker는 <strong>5차시 작업에 사용하는 실습용 EC2 한 대</strong>에 설치합니다. 4차시에서 USER·PRODUCT·STRESS를 단독 실행했던 Amazon Linux 2023 EC2를 그대로 사용해도 됩니다. 내 Windows PC나 RDS에 설치하는 것이 아닙니다.</p><div class="diagram">내 PC
+   │ Session Manager 또는 SSH
+   ▼
+실습용 EC2 1대 (Amazon Linux 2023, t3.medium)
+   ├── ~/app-test/bin        원본 바이너리
+   ├── ~/app-test/docker     Docker 빌드 폴더
+   └── Docker Engine         이번 단계에서 설치
 
-# 그룹 변경은 새 로그인 후 적용
+RDS에는 Docker를 설치하지 않음</div><p class="tip">대회 또는 실습 환경에 Docker가 이미 설치돼 있으면 재설치하지 않고 아래의 사전 확인부터 진행합니다.</p></section>
+<section class="panel"><h2>1단계: Docker 설치 여부 확인</h2><p>실습용 EC2에 Session Manager 또는 SSH로 접속한 터미널에서 실행합니다.</p><pre class="code-block">cat /etc/os-release
+uname -m
+
+docker --version
+sudo systemctl status docker --no-pager</pre><div class="table-wrap"><table class="network-table"><thead><tr><th>결과</th><th>다음 작업</th></tr></thead><tbody><tr><td><code>Docker version ...</code> 출력</td><td>이미 설치됨 — 서비스 시작과 권한 확인으로 이동</td></tr><tr><td><code>docker: command not found</code></td><td>아래 2단계에서 Docker 설치</td></tr><tr><td>명령은 있지만 service가 inactive</td><td><code>systemctl enable --now docker</code> 실행</td></tr></tbody></table></div></section>
+<section class="panel"><h2>2단계: Amazon Linux 2023에 Docker 설치</h2><p>패키지 정보를 갱신하고 Amazon Linux 저장소에서 Docker를 설치합니다.</p><pre class="code-block">sudo dnf update -y
+sudo dnf install -y docker
+
+docker --version
+rpm -q docker</pre><p class="tip"><code>dnf update</code>가 오래 걸리면 경기 중에는 생략하고 <code>sudo dnf install -y docker</code>부터 실행할 수 있습니다. Private Subnet의 EC2는 패키지를 내려받기 위해 NAT Gateway 또는 필요한 외부 통신 경로가 있어야 합니다.</p></section>
+<section class="panel"><h2>3단계: Docker 서비스 시작</h2><p>설치만 하면 Docker Engine이 아직 실행되지 않을 수 있습니다. 지금 시작하고 EC2 재부팅 후에도 자동 시작되도록 설정합니다.</p><pre class="code-block">sudo systemctl enable --now docker
+
+sudo systemctl is-enabled docker
+sudo systemctl is-active docker
+sudo systemctl status docker --no-pager</pre><div class="check-grid"><div class="check-item"><b>자동 시작</b><code>enabled</code></div><div class="check-item"><b>현재 상태</b><code>active</code></div></div></section>
+<section class="panel"><h2>4단계: ec2-user에게 Docker 실행 권한 부여</h2><p>기본 상태에서는 일반 사용자가 Docker daemon에 접근할 때 권한 오류가 발생할 수 있습니다. 현재 로그인 계정을 <code>docker</code> 그룹에 추가합니다.</p><pre class="code-block">sudo usermod -aG docker "$USER"
+
+# 현재 셸에 새 그룹을 즉시 적용
 newgrp docker
-docker version
-docker buildx version</pre><p class="tip">대회에서 제공되는 작업 환경에 Docker가 이미 있으면 재설치하지 않습니다. Docker daemon 소켓을 모든 사용자에게 열기 위해 <code>chmod 666 /var/run/docker.sock</code>을 사용하는 방식은 피합니다.</p></section>
-<section class="panel"><h2>세 이미지 빌드</h2><pre class="code-block">cd ~/app-test
+
+id
+docker version</pre><p class="tip"><code>newgrp docker</code> 대신 Session Manager·SSH 연결을 종료한 뒤 같은 EC2에 다시 접속해도 됩니다. <code>id</code> 출력에 <code>docker</code> 그룹이 보이면 적용된 것입니다.</p></section>
+<section class="panel"><h2>권한 적용이 헷갈릴 때</h2><div class="diagram">sudo usermod -aG docker "$USER"
+               ↓
+현재 로그인 세션에는 아직 반영되지 않을 수 있음
+               ↓
+방법 A: newgrp docker 실행
+또는
+방법 B: exit 후 Session Manager/SSH로 다시 접속
+               ↓
+docker version 실행</div><p><code>docker version</code>에서 Client와 Server 정보가 모두 출력되어야 합니다. Client만 보이고 Server 연결 오류가 나오면 서비스 상태나 사용자 권한을 다시 확인합니다.</p></section>
+<section class="panel"><h2>5단계: Docker 동작 테스트</h2><p>작은 테스트 이미지를 받아 컨테이너 생성·실행·종료가 되는지 확인합니다.</p><pre class="code-block">docker run --rm hello-world
+
+docker ps
+docker image ls hello-world</pre><p><code>Hello from Docker!</code>가 출력되면 Docker Engine이 정상입니다. <code>--rm</code> 옵션 때문에 테스트 컨테이너는 종료 후 자동 삭제됩니다.</p><pre class="code-block"># 테스트 이미지는 더 이상 필요 없으면 정리
+docker image rm hello-world</pre></section>
+<section class="panel"><h2>6단계: Buildx 확인</h2><p>이 과정에서는 EKS Worker Node와 같은 <code>linux/amd64</code> 이미지를 명시적으로 만들기 위해 Buildx를 사용합니다.</p><pre class="code-block">docker buildx version
+docker buildx ls</pre><div class="check-grid"><div class="check-item"><b>정상</b>버전과 builder 목록 출력</div><div class="check-item"><b>목적</b><code>--platform linux/amd64</code> 빌드</div></div><p class="tip">현재 Docker 패키지에서 <code>docker buildx</code>를 제공하지 않는 경우 일반 <code>docker build</code>로도 EC2의 amd64 이미지를 만들 수 있습니다. 이때 빌드 후 <code>docker image inspect</code>에서 Architecture가 <code>amd64</code>인지 반드시 확인합니다.</p></section>
+<section class="panel"><h2>Docker 설치 오류 해결표</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>오류</th><th>원인</th><th>해결</th></tr></thead><tbody><tr><td><code>Unable to find a match: docker</code></td><td>저장소·OS 또는 패키지 메타데이터 문제</td><td><code>/etc/os-release</code> 확인 후 <code>sudo dnf clean all</code>, <code>sudo dnf makecache</code></td></tr><tr><td><code>Cannot connect to the Docker daemon</code></td><td>Docker 서비스 중지</td><td><code>sudo systemctl enable --now docker</code></td></tr><tr><td><code>permission denied ... docker.sock</code></td><td>docker 그룹 미적용</td><td><code>sudo usermod -aG docker "$USER"</code> 후 재접속</td></tr><tr><td>이미지 Pull timeout</td><td>Private Subnet 외부 경로 없음</td><td>NAT Gateway·Route Table·HTTPS 443 Outbound 확인</td></tr><tr><td><code>docker buildx</code>가 없음</td><td>Buildx plugin 미포함</td><td>일반 <code>docker build</code> 사용 후 amd64 검사</td></tr><tr><td>디스크 공간 부족</td><td>불필요한 이미지·Build Cache</td><td><code>docker system df</code>로 확인 후 필요한 대상만 정리</td></tr></tbody></table></div><p class="tip"><code>chmod 666 /var/run/docker.sock</code>으로 모든 사용자에게 Docker 권한을 여는 방식은 사용하지 않습니다. Docker 그룹 자체가 높은 권한을 가지므로 실습 계정만 추가합니다.</p></section>
+<section class="panel"><h2>설치 완료 체크</h2><pre class="code-block">docker --version
+docker version --format 'client={{.Client.Version}} server={{.Server.Version}}'
+sudo systemctl is-active docker
+id | grep docker
+docker info --format 'os={{.OperatingSystem}} arch={{.Architecture}}'</pre><div class="check-grid"><div class="check-item"><b>Docker daemon</b><code>active</code></div><div class="check-item"><b>User group</b><code>docker</code> 포함</div><div class="check-item"><b>Architecture</b><code>x86_64</code> 또는 <code>amd64</code></div><div class="check-item"><b>Test container</b>Hello World 성공</div></div><p>모든 항목이 정상이면 바로 아래의 “세 이미지 빌드” 단계로 이동합니다.</p></section><section class="panel"><h2>세 이미지 빌드</h2><pre class="code-block">cd ~/app-test
 
 for app in user product stress; do
   docker buildx build \
