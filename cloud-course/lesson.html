@@ -489,18 +489,32 @@ sha256sum bin/user bin/product bin/stress
 <tr><td>Logs</td><td>stdout / stderr</td><td>Docker·CloudWatch 수집 가능</td></tr>
 <tr><td>Image tag</td><td>변경 가능한 태그 + commit SHA</td><td>배포 버전 추적과 롤백</td></tr>
 </tbody></table></div></section>
-<section class="panel"><h2>빌드 컨텍스트 준비</h2><pre class="code-block">cd ~/app-test
+<section class="panel"><h2>먼저 이해하기: 빌드 컨텍스트란?</h2><p>Docker 이미지를 만들 때 Docker에 전달하는 <strong>작업 폴더</strong>를 빌드 컨텍스트라고 합니다. 택배 상자에 넣은 물건만 보낼 수 있는 것처럼, Docker는 지정한 폴더 안의 파일만 이미지 제작에 사용할 수 있습니다.</p><div class="diagram">docker/user/                 docker/product/              docker/stress/
+├── application (USER)      ├── application (PRODUCT)    ├── application (STRESS)
+├── Dockerfile              ├── Dockerfile               ├── Dockerfile
+└── .dockerignore           └── .dockerignore            └── .dockerignore
+
+각 폴더 = 서로 독립된 빌드 컨텍스트 1개</div><div class="table-wrap"><table class="network-table"><thead><tr><th>파일</th><th>역할</th><th>쉽게 말하면</th></tr></thead><tbody><tr><td><code>application</code></td><td>실제로 실행할 바이너리</td><td>상자에 넣을 프로그램</td></tr><tr><td><code>Dockerfile</code></td><td>이미지 제작 명령서</td><td>프로그램을 어디에 놓고 어떻게 실행할지 설명</td></tr><tr><td><code>.dockerignore</code></td><td>Docker에 보내지 않을 파일 지정</td><td>비밀번호·로그·불필요한 파일이 상자에 들어가는 것을 방지</td></tr></tbody></table></div><p class="tip">USER, PRODUCT, STRESS를 한 폴더에 모두 넣지 않습니다. 앱마다 별도 폴더를 사용하면 이미지에 다른 앱 바이너리가 섞이는 실수를 막을 수 있습니다.</p></section>
+<section class="panel"><h2>1단계: 세 개의 빌드 폴더 만들기</h2><p>4차시에서 확인한 원본은 <code>~/app-test/bin</code>에 그대로 보관하고, 각 빌드 폴더에는 해당 바이너리 하나만 복사합니다. Dockerfile을 세 앱에 공통으로 쓰기 위해 복사될 파일 이름을 모두 <code>application</code>으로 통일합니다.</p><pre class="code-block">cd ~/app-test
 mkdir -p docker/user docker/product docker/stress
 
-# 4차시에서 검증한 바이너리를 각 컨텍스트에 application 이름으로 복사
 cp bin/user    docker/user/application
 cp bin/product docker/product/application
-cp bin/stress  docker/stress/application
+cp bin/stress  docker/stress/application</pre><div class="diagram">복사 전                         복사 후
+bin/user        ─────────────▶ docker/user/application
+bin/product     ─────────────▶ docker/product/application
+bin/stress      ─────────────▶ docker/stress/application
+
+원본 이름은 다르지만 컨테이너 안에서는 모두 /app/application으로 실행</div><p class="tip"><code>mv</code>가 아니라 <code>cp</code>를 사용합니다. 그래야 4차시에서 검증한 원본이 <code>bin</code> 폴더에 남아 비교와 재빌드에 사용할 수 있습니다.</p></section>
+<section class="panel"><h2>2단계: 복사가 정확한지 확인하기</h2><p>SHA-256은 파일의 지문입니다. 각 명령에서 출력되는 두 값이 같으면 복사 과정에서 파일이 바뀌지 않은 것입니다.</p><pre class="code-block">cd ~/app-test
 
 sha256sum bin/user docker/user/application
 sha256sum bin/product docker/product/application
-sha256sum bin/stress docker/stress/application</pre><p class="tip">원본과 복사본의 SHA-256이 같아야 합니다. 빌드 컨텍스트에는 해당 앱 바이너리와 Dockerfile만 두어 불필요한 파일이나 자격증명이 이미지에 들어가지 않게 합니다.</p></section>
-<section class="panel"><h2>공통 Dockerfile</h2><p>아래 Dockerfile을 <code>docker/user</code>, <code>docker/product</code>, <code>docker/stress</code>에 각각 저장합니다.</p><pre class="code-block">FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal
+sha256sum bin/stress docker/stress/application</pre><pre class="code-block"># 예시: 한 쌍의 앞쪽 긴 값이 서로 같아야 함
+abc123...  bin/user
+abc123...  docker/user/application</pre><p class="tip">값이 다르면 해당 복사본을 삭제하고 다시 복사합니다. 세 앱의 해시가 서로 같아야 한다는 뜻은 아닙니다. <strong>USER 원본과 USER 복사본처럼 같은 줄 묶음의 두 값</strong>만 비교합니다.</p></section>
+<section class="panel"><h2>3단계: 공통 Dockerfile 만들기</h2><p>아래 명령은 먼저 USER 폴더에 Dockerfile을 실제로 생성합니다. <code>EOF</code> 사이의 내용을 터미널이 파일로 저장하므로 편집기를 열 필요가 없습니다.</p><pre class="code-block">cat &gt; ~/app-test/docker/user/Dockerfile &lt;&lt;'EOF'
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal
 
 WORKDIR /app
 COPY --chown=10001:10001 application /app/application
@@ -510,12 +524,30 @@ USER 10001:10001
 EXPOSE 8080
 ENV TZ=Asia/Seoul
 
-ENTRYPOINT ["/app/application"]</pre><p class="tip">지급 바이너리가 동적 라이브러리를 요구한다면 <code>ldd application</code> 결과를 확인하고 필요한 런타임 패키지만 추가합니다. 무작정 개발 도구 전체를 설치하지 않습니다.</p></section>
-<section class="panel"><h2>.dockerignore</h2><p>각 빌드 컨텍스트에 아래 파일을 둡니다. 현재 컨텍스트에는 application과 Dockerfile만 포함시킵니다.</p><pre class="code-block"># .dockerignore
+ENTRYPOINT ["/app/application"]
+EOF
+
+# 같은 Dockerfile을 PRODUCT와 STRESS 폴더에도 복사
+cp ~/app-test/docker/user/Dockerfile ~/app-test/docker/product/Dockerfile
+cp ~/app-test/docker/user/Dockerfile ~/app-test/docker/stress/Dockerfile</pre><p class="tip">명령을 복사할 때 시작의 <code>cat</code>부터 마지막 <code>EOF</code>까지 전부 실행합니다. 마지막 EOF 앞뒤에는 따옴표나 공백을 추가하지 않습니다.</p></section>
+<section class="panel"><h2>Dockerfile 한 줄씩 이해하기</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>Dockerfile 명령</th><th>의미</th></tr></thead><tbody><tr><td><code>FROM ...amazonlinux:2023-minimal</code></td><td>작은 Amazon Linux 2023 환경을 이미지의 바탕으로 사용합니다.</td></tr><tr><td><code>WORKDIR /app</code></td><td>컨테이너 안의 기본 작업 위치를 <code>/app</code>으로 정합니다.</td></tr><tr><td><code>COPY ... application /app/application</code></td><td>현재 빌드 폴더의 바이너리를 컨테이너 안으로 복사하고 UID 10001 소유로 만듭니다.</td></tr><tr><td><code>RUN chmod 0550 ...</code></td><td>소유자와 그룹은 실행할 수 있지만 아무나 수정하지 못하게 권한을 제한합니다.</td></tr><tr><td><code>USER 10001:10001</code></td><td>root가 아닌 일반 사용자 권한으로 앱을 실행합니다.</td></tr><tr><td><code>EXPOSE 8080</code></td><td>이 애플리케이션이 TCP 8080을 사용한다는 정보를 기록합니다. 이것만으로 외부 포트가 열리지는 않습니다.</td></tr><tr><td><code>ENV TZ=Asia/Seoul</code></td><td>컨테이너 시간대를 서울로 지정합니다.</td></tr><tr><td><code>ENTRYPOINT ["/app/application"]</code></td><td>컨테이너를 시작할 때 바이너리를 자동 실행합니다.</td></tr></tbody></table></div><p class="tip">지급 바이너리가 동적 라이브러리를 요구하는 경우에만 <code>ldd application</code> 결과를 보고 필요한 런타임 패키지를 추가합니다. 처음부터 Go compiler나 개발 도구 전체를 설치하지 않습니다.</p></section>
+<section class="panel"><h2>4단계: .dockerignore 만들기</h2><p><code>.dockerignore</code>는 Docker가 빌드 폴더를 읽을 때 제외할 파일을 정합니다. 아래 설정은 먼저 모든 파일을 제외한 뒤 <code>application</code>과 <code>Dockerfile</code>만 다시 허용합니다.</p><pre class="code-block">for app in user product stress; do
+  cat &gt; ~/app-test/docker/$app/.dockerignore &lt;&lt;'EOF'
 *
 !application
-!Dockerfile</pre></section>
-<section class="panel"><h2>Docker 설치와 Buildx 확인</h2><pre class="code-block">sudo dnf install -y docker
+!Dockerfile
+EOF
+done</pre><div class="table-wrap"><table class="network-table"><thead><tr><th>줄</th><th>뜻</th></tr></thead><tbody><tr><td><code>*</code></td><td>현재 폴더의 모든 파일을 기본적으로 Docker에 보내지 않습니다.</td></tr><tr><td><code>!application</code></td><td>단, 실행 바이너리는 빌드에 포함합니다.</td></tr><tr><td><code>!Dockerfile</code></td><td>단, 이미지 제작 명령서도 포함합니다.</td></tr></tbody></table></div><p class="tip">나중에 같은 폴더에 로그, <code>mysql.env</code>, AWS 자격증명 파일을 실수로 두더라도 빌드 컨텍스트에서 제외하는 안전장치입니다. 그래도 비밀 파일을 빌드 폴더에 두지 않는 것이 우선입니다.</p></section>
+<section class="panel"><h2>5단계: 최종 폴더 확인하기</h2><p>빌드하기 전에 세 폴더에 필요한 파일이 정확히 세 개씩 있는지 확인합니다.</p><pre class="code-block">cd ~/app-test
+
+for app in user product stress; do
+  echo "=== docker/$app ==="
+  find "docker/$app" -maxdepth 1 -type f -printf '%f
+' | sort
+done</pre><pre class="code-block"># 각 앱에서 기대하는 출력
+.dockerignore
+Dockerfile
+application</pre><p class="tip">출력에 <code>mysql.env</code>, <code>*.log</code>, SSH Key 또는 다른 앱 바이너리가 보이면 빌드 전에 해당 파일을 폴더 밖으로 옮깁니다.</p></section><section class="panel"><h2>Docker 설치와 Buildx 확인</h2><pre class="code-block">sudo dnf install -y docker
 sudo systemctl enable --now docker
 sudo usermod -aG docker ec2-user
 
