@@ -223,12 +223,24 @@ CREATE TABLE product (
     image_path  VARCHAR(500) DEFAULT NULL,
     PRIMARY KEY (id)
 );</pre><p class="tip"><code>GET /v1/user?email=...</code> 요청이 반복되므로 <code>email</code> 인덱스를 추가합니다. product는 기본키 <code>id</code> 조회가 빈번하므로 Primary Key 인덱스를 그대로 활용합니다.</p></section>
-<section class="panel"><h2>load_user.dump 적재</h2><pre class="code-block">mysql -h &lt;RDS_ENDPOINT&gt; -P 3306 \
-  -u appuser -p dev &lt; load_user.dump
+<section class="panel"><h2>연습용 load_user.dump 다운로드</h2><p>공식 dump가 아직 제공되지 않은 경우 아래 교육용 데이터로 RDS 적재 과정을 연습할 수 있습니다. <code>dbdump000001</code>부터 <code>dbdump001000</code>까지 사용자 1,000건이 들어 있으며 공식 대회 데이터는 아닙니다.</p><div class="check-grid"><a class="check-item" href="downloads/lesson03/load_user.dump" download><b>load_user.dump 다운로드</b>연습용 USER 데이터 1,000건</a><div class="check-item"><b>대회 당일</b>주최 측 공식 load_user.dump로 교체</div></div><pre class="code-block">mkdir -p ~/app-test/data
+cd ~/app-test/data
 
-mysql -h &lt;RDS_ENDPOINT&gt; -P 3306 \
-  -u appuser -p -D dev \
-  -e "SELECT COUNT(*) AS user_count FROM user;"</pre><p class="tip">지급된 dump 데이터는 임의로 수정·삭제하거나 불필요한 데이터를 추가하지 않습니다. 재실행 전에 중복키가 발생하는 방식인지 먼저 확인하세요.</p></section>
+curl -fLO https://rani0380.github.io/2026_nationalskills/cloud-course/downloads/lesson03/load_user.dump
+
+file load_user.dump
+wc -l load_user.dump
+sha256sum load_user.dump
+head -n 8 load_user.dump</pre><p class="tip"><code>file</code> 결과가 text이고 첫 줄에 Lesson 03 practice data가 보여야 합니다. HTML document가 나오면 GitHub Pages 오류 페이지를 받은 것이므로 URL과 HTTP 상태를 확인합니다.</p></section>
+<section class="panel"><h2>load_user.dump 적재</h2><p>테이블 생성 후 빈 USER 테이블에 한 번만 적재합니다. 먼저 현재 건수를 확인하고, 적재 도중 오류가 발생하면 메시지를 보존한 뒤 원인을 해결합니다.</p><pre class="code-block">cd ~/app-test/data
+
+mysql -h "$RDS_ENDPOINT" -P 3306   -u appuser -p -D dev   -e "SELECT COUNT(*) AS before_count FROM user;"
+
+mysql -h "$RDS_ENDPOINT" -P 3306   -u appuser -p dev &lt; load_user.dump
+
+mysql -h "$RDS_ENDPOINT" -P 3306   -u appuser -p -D dev   -e "SELECT COUNT(*) AS after_count FROM user;
+      SELECT id,username,email FROM user ORDER BY id LIMIT 3;"</pre><div class="check-grid"><div class="check-item"><b>연습용 기대 건수</b><code>after_count = 1000</code></div><div class="check-item"><b>샘플 조회</b><code>dbdump000001</code>부터 출력</div><div class="check-item"><b>중복 검사</b>id·username 중복 없음</div><div class="check-item"><b>공식 대회</b>공식 dump의 원본 건수 유지</div></div><pre class="code-block">mysql -h "$RDS_ENDPOINT" -P 3306   -u appuser -p -D dev   -e "SELECT id,COUNT(*) c FROM user GROUP BY id HAVING c &gt; 1;
+      SELECT username,COUNT(*) c FROM user GROUP BY username HAVING c &gt; 1;"</pre><p class="tip">대회 당일에는 반드시 주최 측이 제공한 <code>load_user.dump</code>를 사용하고 데이터를 임의로 수정·삭제하거나 추가하지 않습니다. 이미 적재한 dump를 다시 실행하면 Primary Key 또는 Unique Key 중복 오류가 발생하는 것이 정상입니다.</p></section>
 <section class="panel"><h2>애플리케이션 환경변수</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>Key</th><th>예시 값</th><th>주의사항</th></tr></thead><tbody>
 <tr><td><code>MYSQL_USER</code></td><td><code>appuser</code></td><td>dev 읽기·쓰기 권한</td></tr>
 <tr><td><code>MYSQL_PASSWORD</code></td><td>Secret에서 주입</td><td>이미지나 YAML 원문에 저장 금지</td></tr>
