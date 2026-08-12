@@ -870,6 +870,47 @@ aws iam list-attached-role-policies \
 </tbody></table></div></section>
 <section class="panel"><h2>7차시 전달 체크리스트</h2><ul><li>서울 리전에 ECR Private Repository가 정확히 3개 있습니다.</li><li>세 저장소는 Immutable tag와 scan on push가 활성화되어 있습니다.</li><li>USER·PRODUCT·STRESS 이미지의 Commit SHA 태그와 digest를 기록했습니다.</li><li>이미지를 삭제한 뒤 ECR에서 pull하여 <code>linux/amd64</code>를 재확인했습니다.</li><li>치명적 스캔 결과를 확인하고 필요한 경우 새 이미지로 교체했습니다.</li><li>EKS Node Role에 <code>AmazonEC2ContainerRegistryPullOnly</code>가 있습니다.</li><li>Private App Subnet에서 ECR/S3로 나가는 경로가 하나만 명확히 구성됐습니다.</li><li>불필요한 repository와 중복 태그를 만들지 않았습니다.</li></ul><p>공식 참고: <a href="https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-create.html">ECR repository 생성</a>, <a href="https://docs.aws.amazon.com/AmazonECR/latest/userguide/example_ecr_GettingStarted_078_section.html">ECR 인증·Push</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html">EKS Node IAM Role</a></p></section>`;}
 if(n===7){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>먼저 이해하기: 7차시에서 만드는 것</h2>
+<p>7차시의 목표는 <strong>EKS 제어 영역</strong>과 실제 Pod가 실행될 <strong>EC2 워커 노드 2대</strong>를 연결하고, <code>kubectl</code>로 관리할 수 있는 상태를 만드는 것입니다. 아직 USER·PRODUCT·STRESS를 배포하지 않습니다. 애플리케이션 배포는 8~9차시에서 진행합니다.</p>
+<div class="flow-row"><span>IAM Role 2개</span><span>→</span><span>EKS Cluster</span><span>→</span><span>Managed Node Group</span><span>→</span><span>Node 2대 Ready</span><span>→</span><span>ECR Pull 확인</span></div>
+<div class="table-wrap"><table class="network-table"><thead><tr><th>구성요소</th><th>역할</th><th>직접 만드는가?</th></tr></thead><tbody>
+<tr><td>EKS Cluster</td><td>Kubernetes API와 스케줄링을 담당하는 관리 영역</td><td>AWS CLI 또는 콘솔에서 생성</td></tr>
+<tr><td>Managed Node Group</td><td>워커 EC2를 묶어서 생성·교체·확장</td><td>Node Group만 생성하면 AWS가 EC2를 생성</td></tr>
+<tr><td>Node</td><td>Pod가 실제로 실행되는 <code>t3.medium</code> EC2</td><td>직접 EC2 시작 금지</td></tr>
+<tr><td>Pod</td><td>컨테이너가 실행되는 Kubernetes의 최소 배포 단위</td><td>8차시 Deployment가 생성</td></tr>
+</tbody></table></div>
+<div class="callout"><strong>완료 기준:</strong> 클러스터 상태가 <code>ACTIVE</code>인 것만으로는 부족합니다. <code>kubectl get nodes</code>에서 워커 노드 2대가 모두 <code>Ready</code>이고, <code>kube-system</code> Pod가 정상 실행되어야 7차시가 완료됩니다.</div></section>
+
+<section class="panel"><h2>명령은 어디에서 실행하나요?</h2>
+<p>5~6차시에서 사용한 <strong>관리·빌드용 EC2(Amazon Linux 2023)</strong>에 접속하여 실행하는 것을 권장합니다. 이 EC2에는 AWS CLI 자격증명, <code>kubectl</code>, 외부 통신 경로가 있어야 합니다. 명령 앞의 <code>$</code> 표시는 입력하지 않습니다.</p>
+<div class="table-wrap"><table class="network-table"><thead><tr><th>확인 대상</th><th>확인 위치</th><th>명령 또는 콘솔 경로</th></tr></thead><tbody>
+<tr><td>AWS 로그인 주체</td><td>관리용 EC2 터미널</td><td><code>aws sts get-caller-identity</code></td></tr>
+<tr><td>AWS CLI</td><td>관리용 EC2 터미널</td><td><code>aws --version</code></td></tr>
+<tr><td>kubectl</td><td>관리용 EC2 터미널</td><td><code>kubectl version --client</code></td></tr>
+<tr><td>EKS 상태</td><td>AWS 콘솔</td><td>EKS → Clusters → <code>apdev-eks-cluster</code></td></tr>
+<tr><td>워커 EC2</td><td>AWS 콘솔</td><td>EC2 → Instances에서 Node Group이 만든 인스턴스 확인</td></tr>
+</tbody></table></div>
+<div class="callout warn"><strong>EC2 대수 정리:</strong> 관리·빌드용 EC2 1대를 계속 사용한다면 콘솔에는 보통 <strong>관리용 1대 + 워커 노드 2대 = 총 3대</strong>가 보입니다. EKS용 워커 EC2를 따로 수동 생성하지 마세요. Node Group이 private-a와 private-c에 자동으로 생성합니다.</div></section>
+
+<section class="panel"><h2>Cluster Role과 Node Role을 구분하세요</h2>
+<div class="table-wrap"><table class="network-table"><thead><tr><th>Role</th><th>사용 주체</th><th>필수 정책</th><th>쉽게 기억하기</th></tr></thead><tbody>
+<tr><td><code>apdev-eks-cluster-role</code></td><td>EKS 서비스</td><td><code>AmazonEKSClusterPolicy</code></td><td>클러스터가 AWS 리소스를 관리</td></tr>
+<tr><td><code>apdev-eks-node-role</code></td><td>워커 EC2</td><td><code>AmazonEKSWorkerNodePolicy</code><br><code>AmazonEC2ContainerRegistryPullOnly</code></td><td>노드가 EKS에 참여하고 ECR 이미지를 Pull</td></tr>
+</tbody></table></div>
+<p>두 Role은 신뢰 주체와 목적이 다르므로 하나로 합치지 않습니다. 이름이 비슷해도 클러스터 생성 화면에는 Cluster Role을, Node Group 생성 화면에는 Node Role을 선택해야 합니다.</p></section>
+
+<section class="panel"><h2>실습 진행 순서와 중간 성공 기준</h2>
+<ol class="step-list">
+<li><strong>사전 점검:</strong> VPC, private-a/private-c, NAT 경로, AWS CLI와 kubectl을 확인합니다.</li>
+<li><strong>IAM Role 생성:</strong> Cluster Role과 Node Role을 각각 만들고 정책을 연결합니다.</li>
+<li><strong>EKS Cluster 생성:</strong> private-a/private-c를 지정하고 상태가 <code>ACTIVE</code>가 될 때까지 기다립니다.</li>
+<li><strong>접속 설정:</strong> <code>aws eks update-kubeconfig</code> 후 <code>kubectl cluster-info</code>가 성공하는지 확인합니다.</li>
+<li><strong>Node Group 생성:</strong> <code>t3.medium</code>, desired 2, min 2, max 2로 생성합니다.</li>
+<li><strong>노드 확인:</strong> <code>kubectl get nodes -o wide</code>에서 2대가 <code>Ready</code>인지 확인합니다.</li>
+<li><strong>기본 기능 확인:</strong> 시스템 Pod, 애드온, ECR 이미지 Pull 테스트를 완료합니다.</li>
+</ol>
+<div class="callout"><strong>CLI와 콘솔 중 하나를 선택:</strong> 아래 실습은 재현이 쉬운 CLI 기준입니다. 콘솔에서 같은 리소스를 먼저 만든 뒤 CLI 명령을 다시 실행하면 중복 이름 오류가 발생하므로 두 방식을 섞지 않습니다.</div></section>
+
 <section class="panel"><h2>구축 목표와 고정 조건</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>항목</th><th>실습 설정</th><th>이유</th></tr></thead><tbody>
 <tr><td>Cluster name</td><td><code>apdev-eks-cluster</code></td><td>일관된 리소스 식별</td></tr>
 <tr><td>Region</td><td><code>ap-northeast-2</code></td><td>대회 지정 서울 리전</td></tr>
