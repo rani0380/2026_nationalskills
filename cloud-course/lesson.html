@@ -676,7 +676,78 @@ done</pre><div class="table-wrap"><table class="network-table"><thead><tr><th>�
 <section class="panel"><h2>ECR 전달 전 완료 기준</h2><ul><li>세 이미지의 OS/Architecture가 <code>linux/amd64</code>입니다.</li><li>세 컨테이너 모두 비루트 UID 10001로 실행됩니다.</li><li>healthcheck와 핵심 API가 4차시 결과와 동일합니다.</li><li><code>docker logs</code>에서 access log를 볼 수 있습니다.</li><li>이미지 history, config, layer에 DB·AWS 비밀정보가 없습니다.</li><li>테스트 컨테이너를 모두 종료했으며 불필요한 이미지 복제본이 없습니다.</li><li>Commit SHA 태그를 기록해 6차시 ECR push에 사용할 준비가 됐습니다.</li></ul><p class="tip">여기까지는 EC2의 로컬 Docker 이미지 준비 단계입니다. Repository 생성·로그인·태그·Push는 다음 차시에서 이어집니다.</p><p><a class="btn primary" href="lesson.html?lesson=06">6차시 ECR 이미지 저장소로 이동 →</a></p></section>`;}
 if(n===6){document.getElementById('lesson-extra').innerHTML=`
 <section class="panel"><h2>ECR 실습 목표</h2><p>5차시의 USER·PRODUCT·STRESS 이미지를 서울 리전의 Private ECR에 저장하고, 태그가 아닌 digest까지 검증해 7~9차시 EKS 배포에 사용할 이미지 주소를 확정합니다.</p><div class="check-grid"><div class="check-item"><b>Repository</b>앱별 1개, 총 3개</div><div class="check-item"><b>Security</b>Immutable tag, scan on push</div><div class="check-item"><b>Traceability</b>Commit SHA와 digest 기록</div><div class="check-item"><b>EKS Pull</b>Node role에 PullOnly 권한</div></div></section>
-<section class="panel"><h2>권장 저장소 계획</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>애플리케이션</th><th>Repository</th><th>로컬 이미지</th><th>배포 태그</th></tr></thead><tbody>
+<section class="panel"><h2>먼저 이해하기: ECR이란?</h2><p>Amazon ECR은 AWS 안에 있는 <strong>Docker 이미지 보관소</strong>입니다. 5차시에서 만든 이미지는 아직 실습용 EC2의 로컬 디스크에만 있으므로 EKS Worker Node가 가져갈 수 없습니다. 이미지를 ECR에 Push하면 7~9차시에서 EKS가 같은 이미지를 Pull해 Pod를 실행할 수 있습니다.</p><div class="diagram">5차시: 실습용 EC2의 로컬 이미지
+├── user:local
+├── product:local
+└── stress:local
+        │ docker tag + docker push
+        ▼
+6차시: Amazon ECR Private Repository
+├── apdev/user
+├── apdev/product
+└── apdev/stress
+        │ EKS Worker Node가 Pull
+        ▼
+7~9차시: USER·PRODUCT·STRESS Pod 실행</div><div class="table-wrap"><table class="network-table"><thead><tr><th>용어</th><th>쉽게 설명하면</th><th>예시</th></tr></thead><tbody><tr><td>Image</td><td>앱 실행 파일과 런타임을 묶은 결과물</td><td><code>user:local</code></td></tr><tr><td>Repository</td><td>한 종류의 이미지를 보관하는 ECR 폴더</td><td><code>apdev/user</code></td></tr><tr><td>Registry</td><td>AWS 계정·리전별 ECR 저장소 주소</td><td><code>123456789012.dkr.ecr.ap-northeast-2.amazonaws.com</code></td></tr><tr><td>Tag</td><td>사람이 구분하는 이미지 버전 이름</td><td><code>v1</code>, <code>a1b2c3d</code></td></tr><tr><td>Digest</td><td>내용이 같을 때만 같은 이미지 고유 지문</td><td><code>sha256:...</code></td></tr></tbody></table></div></section>
+<section class="panel"><h2>6차시 명령은 어디서 실행하나요?</h2><p><strong>5차시에서 Docker 이미지를 빌드한 동일한 실습용 EC2</strong>에 Session Manager 또는 SSH로 접속해 실행합니다. ECR은 AWS 서비스이므로 별도의 ECR 서버 EC2를 만들지 않습니다.</p><div class="diagram">내 PC
+   │ Session Manager / SSH
+   ▼
+실습용 EC2 1대
+├── AWS CLI → ECR Repository 생성·조회·로그인 토큰 요청
+└── Docker  → 로컬 이미지 tag·push
+                    │ HTTPS 443
+                    ▼
+             AWS 관리형 ECR
+
+추가 EC2 생성 불필요 · RDS에서 실행하지 않음</div><p class="tip">Private App Subnet에 있는 EC2라면 NAT Gateway 또는 ECR API·ECR DKR Interface Endpoint와 S3 Gateway Endpoint가 필요합니다. 가장 먼저 AWS CLI와 Docker가 모두 동작하는지 확인합니다.</p></section>
+<section class="panel"><h2>시작 전 준비 상태 확인</h2><pre class="code-block"># 실습용 EC2에서 실행
+hostname
+aws --version
+docker --version
+sudo systemctl is-active docker
+
+aws sts get-caller-identity
+aws configure get region
+
+docker image ls   --format 'table {{.Repository}}	{{.Tag}}	{{.Size}}'   | grep -E 'REPOSITORY|user|product|stress'</pre><div class="check-grid"><div class="check-item"><b>AWS CLI</b>버전과 배정 계정 ID 출력</div><div class="check-item"><b>Region</b><code>ap-northeast-2</code></div><div class="check-item"><b>Docker</b>서비스 <code>active</code></div><div class="check-item"><b>Local images</b><code>user:local</code> 등 3개</div></div><p class="tip">로컬 이미지가 없으면 5차시로 돌아가 빌드합니다. ECR Repository를 먼저 만들어도 이미지는 자동으로 생기지 않습니다.</p></section>
+<section class="panel"><h2>Repository와 Image의 차이</h2><div class="diagram">Repository를 생성한 직후
+apdev/user/
+└── 비어 있음
+
+docker push 후
+apdev/user/
+└── IMAGE_TAG
+    ├── Image digest: sha256:...
+    ├── Size
+    └── Pushed at</div><p><code>aws ecr create-repository</code>는 빈 보관 장소만 만들고, <code>docker push</code>가 실제 이미지 Layer를 올립니다. 따라서 AWS Console에서 Repository가 보인다고 실습이 끝난 것이 아닙니다.</p></section>
+<section class="panel"><h2>AWS Console에서 만드는 방법</h2><p>CLI가 익숙하지 않다면 처음 한 번은 콘솔에서 구조를 확인할 수 있습니다. 서울 리전인지 먼저 확인합니다.</p><ol><li>AWS Console 상단 Region을 <strong>서울(ap-northeast-2)</strong>로 선택합니다.</li><li>Amazon ECR → Private registry → Repositories → Create repository로 이동합니다.</li><li>Visibility는 Private, Repository name은 <code>apdev/user</code>로 입력합니다.</li><li>Tag immutability는 Immutable, Scan on push는 활성화하고 Repository를 생성합니다.</li><li><code>apdev/product</code>, <code>apdev/stress</code>도 같은 설정으로 생성합니다.</li><li>Repository를 열어 View push commands를 확인합니다. 이후 사이트의 명령과 비교합니다.</li></ol><p class="tip">콘솔 또는 CLI 중 한 방식으로만 생성합니다. 이미 생성된 저장소에 <code>create-repository</code>를 다시 실행하면 RepositoryAlreadyExistsException이 발생합니다.</p></section>
+<section class="panel"><h2>이미지 주소가 만들어지는 원리</h2><div class="diagram">REGISTRY                  + Repository    + Tag
+123456789012.dkr.ecr...   /apdev/user     :a1b2c3d
+        │                       │               │
+        └──── AWS 계정·리전 ────┴─ 앱 보관소 ──┴─ 버전
+
+전체 주소:
+123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/apdev/user:a1b2c3d</div><p><code>docker tag</code>는 이미지 내용을 복사하지 않고 로컬 이미지에 ECR 목적지 이름을 하나 더 붙입니다. 그 다음 <code>docker push</code>가 그 이름의 Registry와 Repository로 이미지를 전송합니다.</p></section>
+<section class="panel"><h2>USER 이미지 하나로 먼저 연습</h2><p>반복문이 어렵다면 USER 한 개로 전체 흐름을 먼저 성공시킨 뒤 PRODUCT와 STRESS에 같은 작업을 적용합니다.</p><pre class="code-block">export AWS_REGION=ap-northeast-2
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity   --query Account --output text)
+export REGISTRY=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+export IMAGE_TAG=v1
+
+# 1. USER Repository 생성
+aws ecr create-repository   --repository-name apdev/user   --region "$AWS_REGION"   --image-tag-mutability IMMUTABLE   --image-scanning-configuration scanOnPush=true
+
+# 2. Docker를 ECR에 로그인
+aws ecr get-login-password --region "$AWS_REGION" |   docker login --username AWS --password-stdin "$REGISTRY"
+
+# 3. 로컬 이름에 ECR 주소를 추가
+docker tag user:local   "$REGISTRY/apdev/user:$IMAGE_TAG"
+
+# 4. ECR로 전송
+docker push "$REGISTRY/apdev/user:$IMAGE_TAG"
+
+# 5. 업로드 결과 확인
+aws ecr describe-images   --repository-name apdev/user   --image-ids imageTag="$IMAGE_TAG"   --region "$AWS_REGION"   --output table</pre><p class="tip">이 실습에서 이미 <code>apdev/user</code>를 만들었다면 1번은 건너뜁니다. Immutable Repository에 <code>v1</code>을 이미 Push했다면 새 태그를 사용해야 합니다.</p></section>
+<section class="panel"><h2>한 앱 Push 성공을 판단하는 방법</h2><div class="check-grid"><div class="check-item"><b>Docker 출력</b><code>digest: sha256:...</code> 표시</div><div class="check-item"><b>ECR Console</b>Repository 안에 Tag·Digest 표시</div><div class="check-item"><b>CLI 조회</b><code>describe-images</code> 결과 존재</div><div class="check-item"><b>Architecture</b>Pull 후 <code>linux/amd64</code></div></div><p>Docker Push의 마지막 줄에 Digest가 출력되고 AWS Console의 ECR → Repositories → <code>apdev/user</code>에도 이미지가 보여야 합니다. 둘 중 하나만 확인하지 말고 CLI 조회까지 수행합니다.</p></section><section class="panel"><h2>권장 저장소 계획</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>애플리케이션</th><th>Repository</th><th>로컬 이미지</th><th>배포 태그</th></tr></thead><tbody>
 <tr><td>USER</td><td><code>apdev/user</code></td><td><code>user:local</code></td><td>Commit SHA</td></tr>
 <tr><td>PRODUCT</td><td><code>apdev/product</code></td><td><code>product:local</code></td><td>Commit SHA</td></tr>
 <tr><td>STRESS</td><td><code>apdev/stress</code></td><td><code>stress:local</code></td><td>Commit SHA</td></tr>
@@ -698,15 +769,12 @@ docker image inspect user:local    --format '{{.Os}}/{{.Architecture}}'
 docker image inspect product:local --format '{{.Os}}/{{.Architecture}}'
 docker image inspect stress:local  --format '{{.Os}}/{{.Architecture}}'</pre><p class="tip">세 이미지 모두 <code>linux/amd64</code>여야 합니다. 계정 ID와 리전을 직접 하드코딩하지 않고 STS와 환경변수로 얻습니다.</p></section>
 <section class="panel"><h2>Private Repository 3개 생성</h2><pre class="code-block">for repo in apdev/user apdev/product apdev/stress; do
-  aws ecr create-repository \
-    --repository-name "$repo" \
-    --region "$AWS_REGION" \
-    --image-tag-mutability IMMUTABLE \
-    --image-scanning-configuration scanOnPush=true \
-    --encryption-configuration encryptionType=AES256 \
-    --tags Key=Project,Value=apdev Key=ManagedBy,Value=student
+  if aws ecr describe-repositories     --repository-names "$repo"     --region "$AWS_REGION" &gt;/dev/null 2&gt;&amp;1; then
+    echo "EXISTS: $repo"
+  else
+    aws ecr create-repository       --repository-name "$repo"       --region "$AWS_REGION"       --image-tag-mutability IMMUTABLE       --image-scanning-configuration scanOnPush=true       --encryption-configuration encryptionType=AES256       --tags Key=Project,Value=apdev Key=ManagedBy,Value=student
+  fi
 done
-
 aws ecr describe-repositories \
   --repository-names apdev/user apdev/product apdev/stress \
   --region "$AWS_REGION" \
