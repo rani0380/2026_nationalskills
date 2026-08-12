@@ -21,7 +21,58 @@ const raw=[
 ['장애 대응 종합훈련','대표 장애를 진단하고 복구합니다.','계층별 원인 축소|재발 방지 기록','Pod crash 재현|DB·Ingress 장애 재현|복구 후 검증','describe와 logs 사용|복구시간 기록','세 장애를 정상 복구'],
 ['3시간 실전 모의대회','처음부터 제출까지 제한시간 안에 수행합니다.','시간 배분 확립|검증 가능한 제출','0~30분 설계|30~120분 구축|120~160분 튜닝|160~180분 최종 검증','이름·타입·리전 재확인|부하 테스트 종료','체크리스트와 로그를 남기고 시간 내 완료']];
 const lessons=raw.map(x=>[x[0],x[1],x[2].split('|'),x[3].split('|'),x[4].split('|'),x[5]]);let n=Number(new URLSearchParams(location.search).get('lesson'));if(!Number.isInteger(n)||n<1||n>18)n=1;const d=lessons[n-1],fill=(id,a)=>document.getElementById(id).innerHTML=a.map(v=>`<li>${v}</li>`).join('');document.title=`${n}차시 ${d[0]}`;counter.textContent=`${n} / 18`;eyebrow.textContent=`${String(n).padStart(2,'0')}차시`;title.textContent=d[0];summary.textContent=d[1];fill('goals',d[2]);fill('steps',d[3]);fill('checks',d[4]);done.textContent=d[5];
-if(n===2){document.getElementById('lesson-extra').innerHTML=`
+if(n===1){document.getElementById('lesson-extra').innerHTML=`
+<section class="panel"><h2>1차시에서 완성할 것</h2><p>이 차시의 결과물은 AWS 리소스가 아니라 <strong>한 장짜리 구축 설계와 검증 순서</strong>입니다. 문제지의 고정 조건을 먼저 잠그고, 채점 점수와 직접 연결되는 트래픽 경로를 그린 뒤 2~18차시의 작업 순서를 확정합니다.</p><div class="check-grid"><div class="check-item"><b>Architecture</b>Client에서 RDS·S3까지 전체 경로</div><div class="check-item"><b>Constraints</b>리전·타입·금지 서비스 고정</div><div class="check-item"><b>Scoring</b>403/404·가용성·성능·비용 연결</div><div class="check-item"><b>Runbook</b>구축·검증·복구 순서 결정</div></div></section>
+<section class="panel"><h2>문제지 고정 조건</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>영역</th><th>반드시 지킬 값</th><th>실수하면 생기는 문제</th></tr></thead><tbody><tr><td>Region</td><td><code>ap-northeast-2</code></td><td>다른 리전 리소스는 채점 실패·비용 증가</td></tr><tr><td>RDS</td><td>MySQL 8.0, <code>apdev-rds-instance</code>, Multi-AZ DB instance, <code>db.t3.micro</code>, gp3</td><td>지정 구성 불일치</td></tr><tr><td>Database</td><td><code>dev</code>, USER·PRODUCT 읽기/쓰기</td><td>앱 시작 또는 API 실패</td></tr><tr><td>Application</td><td>USER·PRODUCT·STRESS, <code>linux/amd64</code>, TCP 8080</td><td>이미지 실행·Target Health 실패</td></tr><tr><td>Container</td><td>Docker + EKS, Worker Node는 EC2 <code>t3.medium</code>만 사용</td><td>ECS·Fargate·다른 타입 사용 시 감점</td></tr><tr><td>Endpoint</td><td>프로토콜과 주소만 제출, 경로 금지</td><td>채점 트래픽 주입 실패</td></tr><tr><td>Time</td><td>KST(UTC+9)</td><td>로그·지표·장애 시점 대조 오류</td></tr><tr><td>Forbidden</td><td>Lambda·Fargate 사용 금지, 불필요한 리소스 생성 금지</td><td>채점 제외 또는 비용 감점 가능</td></tr></tbody></table></div><p class="tip">버킷명·ECR Repository명처럼 자유롭게 정할 수 있는 값과, 인스턴스 타입·리전처럼 바꾸면 안 되는 값을 설계 노트에서 색으로 구분합니다.</p></section>
+<section class="panel"><h2>최종 아키텍처</h2><div class="diagram">Internet Client
+      │ HTTPS · 단일 Endpoint
+      ▼
+CloudFront (+ 선택적 WAF)
+      ├── /images/* ──▶ Private S3 (OAC)
+      │                       ▲
+      │                       │ PRODUCT Pod Identity로 Upload
+      └── API/* ─────▶ Internet-facing ALB
+                               │ Ingress path routing
+                               ▼
+                    EKS on EC2 t3.medium
+                    ├── USER Service ─────┐
+                    ├── PRODUCT Service ──┼──▶ RDS MySQL Multi-AZ
+                    └── STRESS Service    ┘
+
+CloudWatch ◀── ALB·EKS·Container logs/metrics</div><p>외부 사용자는 주소 하나만 사용합니다. API는 ALB와 EKS로, <code>/images/*</code>는 비공개 S3로 전달합니다. PRODUCT만 Pod Identity를 통해 S3 Object를 쓰며 인터넷 사용자는 S3 직접 URL로 접근하지 않습니다.</p></section>
+<section class="panel"><h2>요청 경로와 담당 컴포넌트</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>외부 경로</th><th>최종 대상</th><th>정상 코드·목표</th><th>주요 검증</th></tr></thead><tbody><tr><td><code>/v1/user</code></td><td>USER Pod → RDS</td><td>POST 201, GET 200 · SLO 0.2초</td><td>requestid·uuid, DB 읽기/쓰기</td></tr><tr><td><code>/v1/product</code></td><td>PRODUCT Pod → RDS/S3</td><td>POST 201, GET·PUT 200 · SLO 0.2초</td><td>동일 ID 조회, 이미지 Upload</td></tr><tr><td><code>/v1/stress</code></td><td>STRESS Pod</td><td>POST 201 · SLO 1초</td><td>부하 후에도 가용성 유지</td></tr><tr><td><code>/healthcheck</code></td><td>Pod Health Endpoint</td><td>GET 200</td><td>Probe·ALB Target Health</td></tr><tr><td><code>/images/&lt;object-key&gt;</code></td><td>CloudFront → S3</td><td>GET 200 · 5초 이내</td><td>S3 직접 접근은 비공개</td></tr><tr><td>정상 API의 비정상 요청</td><td>검증 계층</td><td>403</td><td>필수 검증값·형식 누락</td></tr><tr><td>등록되지 않은 API</td><td>Routing 계층</td><td>404</td><td><code>/v1/none</code></td></tr></tbody></table></div><p class="tip">응답시간과 응답코드는 AWS 내부가 아니라 <strong>채점 클라이언트 도착 기준</strong>입니다. Request·Response와 <code>requestid</code>·<code>uuid</code>를 중간 계층에서 임의로 바꾸지 않습니다.</p></section>
+<section class="panel"><h2>채점표를 운영 목표로 변환</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>채점 영역</th><th>배점</th><th>운영 목표</th><th>관련 차시</th></tr></thead><tbody><tr><td>비정상 요청 처리</td><td>4점</td><td>Image 제공과 403/404 성공 비율 확보</td><td>11~12차시</td></tr><tr><td>고가용성·안정성</td><td>12점</td><td>세 API의 성공 응답 비율 최대화</td><td>7~13·17차시</td></tr><tr><td>성능 효율성</td><td>12점</td><td>USER·PRODUCT 0.2초, STRESS 1초 비율 최대화</td><td>13~15차시</td></tr><tr><td>비용 최적화</td><td>12점</td><td>성능 하한을 유지하며 Cost Ratio 최소화</td><td>15~16차시</td></tr></tbody></table></div><p>리소스를 많이 만드는 것이 정답이 아닙니다. 지정 RDS Multi-AZ는 유지하되 EKS Node와 Replica는 측정 근거로만 조절합니다. 성능 점수가 확보되지 않은 상태에서 비용만 줄이면 비용 항목도 인정받기 어렵습니다.</p></section>
+<section class="panel"><h2>최소 리소스 계획</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>리소스</th><th>시작 수량</th><th>설계 원칙</th></tr></thead><tbody><tr><td>VPC</td><td>1</td><td><code>10.0.0.0/16</code>, 서울 리전</td></tr><tr><td>Subnet</td><td>6</td><td>2 AZ × Public·Private App·Private DB</td></tr><tr><td>Internet Gateway</td><td>1</td><td>Public Route에만 연결</td></tr><tr><td>NAT Gateway</td><td>1</td><td>비용을 고려한 최소 시작 구성</td></tr><tr><td>RDS</td><td>1</td><td>지정 Multi-AZ DB instance</td></tr><tr><td>EKS Cluster / Node Group</td><td>각 1</td><td>중복 Cluster·Node Group 금지</td></tr><tr><td>Worker Node</td><td>2</td><td>두 AZ의 <code>t3.medium</code>, 측정 후 조정</td></tr><tr><td>ECR Repository</td><td>3</td><td>USER·PRODUCT·STRESS 앱별 분리</td></tr><tr><td>ALB / CloudFront</td><td>각 1</td><td>최종 외부 Endpoint 단일화</td></tr><tr><td>S3 Bucket</td><td>1</td><td>Block Public Access + OAC</td></tr></tbody></table></div></section>
+<section class="panel"><h2>리소스 이름과 변수 노트</h2><pre class="code-block">AWS_REGION=ap-northeast-2
+VPC_NAME=apdev-vpc
+CLUSTER_NAME=apdev-eks
+NODEGROUP_NAME=apdev-node-group
+RDS_IDENTIFIER=apdev-rds-instance
+DB_NAME=dev
+NAMESPACE=apdev
+
+AWS_ACCOUNT_ID=&lt;12자리 계정 ID&gt;
+RDS_ENDPOINT=&lt;RDS DNS&gt;
+BUCKET=&lt;고유한 S3 버킷명&gt;
+FINAL_ENDPOINT=https://&lt;최종 DNS&gt;</pre><p class="tip">대소문자가 다른 이름을 새 리소스로 인식할 수 있으므로 명명 규칙을 시작 전에 확정합니다. 실제 비밀번호와 Access Key는 이 노트나 Git에 기록하지 않습니다.</p></section>
+<section class="panel"><h2>AWS 작업 전 사전 점검</h2><pre class="code-block">export AWS_REGION=ap-northeast-2
+export AWS_DEFAULT_REGION=ap-northeast-2
+
+aws sts get-caller-identity
+aws configure get region
+date '+%Y-%m-%d %H:%M:%S %Z'
+
+test "$(aws configure get region)" = 'ap-northeast-2' \
+  &amp;&amp; echo 'REGION PASS' \
+  || echo 'REGION CHECK REQUIRED'</pre><p>계정 ID가 선수에게 배정된 계정과 같은지 확인합니다. AWS CLI 기본 리전과 각 명령의 <code>--region</code>이 다르면 다른 리전에 리소스를 만들 수 있습니다.</p></section>
+<section class="panel"><h2>구축 순서와 차시 연결</h2><ol><li><strong>2~4차시:</strong> 네트워크·RDS·바이너리를 먼저 검증해 애플리케이션 기준선을 만듭니다.</li><li><strong>5~6차시:</strong> 같은 바이너리를 Docker 이미지로 만들고 ECR Digest를 확정합니다.</li><li><strong>7~9차시:</strong> EKS EC2 Node에 세 앱을 배포하고 내부 통신을 검증합니다.</li><li><strong>10~12차시:</strong> ALB·CloudFront·S3를 하나의 Endpoint로 묶고 403/404를 확정합니다.</li><li><strong>13~16차시:</strong> 로그와 동일 부하 측정으로 성능·비용을 한 항목씩 조정합니다.</li><li><strong>17~18차시:</strong> 장애 복구와 3시간 전체 구축을 반복합니다.</li></ol><p class="tip">각 단계에서 검증이 끝나기 전에 다음 단계로 넘어가지 않습니다. 4차시 단독 실행이 실패하면 EKS를 먼저 만들지 않고 RDS·환경변수·바이너리부터 해결합니다.</p></section>
+<section class="panel"><h2>3시간 경기 시간 배분</h2><div class="table-wrap"><table class="network-table"><thead><tr><th>시간</th><th>작업</th><th>통과 조건</th></tr></thead><tbody><tr><td>0~15분</td><td>문제 고정값·계정·리전·제공 파일 확인</td><td>변수 노트와 SHA-256 기록</td></tr><tr><td>15~55분</td><td>VPC·RDS·데이터·앱 단독 검증</td><td>DB 읽기/쓰기와 API 성공</td></tr><tr><td>55~105분</td><td>Docker·ECR·EKS·세 앱 배포</td><td>세 Service Health 200</td></tr><tr><td>105~135분</td><td>ALB·S3·CloudFront·단일 Endpoint</td><td>API와 Image가 같은 주소에서 성공</td></tr><tr><td>135~160분</td><td>403/404·모니터링·부하 측정</td><td>오류코드와 SLO 결과 기록</td></tr><tr><td>160~175분</td><td>병목·비용 조정 후 재측정</td><td>성능 하한을 유지한 최소 구성</td></tr><tr><td>175~180분</td><td>Endpoint 제출·부하 종료·최종 점검</td><td>프로토콜 포함, 경로 없음</td></tr></tbody></table></div></section>
+<section class="panel"><h2>Endpoint 제출 형식</h2><div class="check-grid"><div class="check-item"><b>정상</b><code>https://example.org</code></div><div class="check-item"><b>프로토콜 누락</b><code>example.org</code> — 잘못된 형식</div><div class="check-item"><b>경로 포함</b><code>https://example.org/v1/</code> — 잘못된 형식</div><div class="check-item"><b>노출 주의</b>본인 Endpoint를 타인에게 공유하지 않음</div></div><pre class="code-block">ENDPOINT='https://&lt;FINAL_DOMAIN&gt;'
+
+printf '%s\n' "$ENDPOINT"
+curl -i "$ENDPOINT/healthcheck"
+curl -i "$ENDPOINT/v1/none"</pre></section>
+<section class="panel"><h2>1차시 완료 체크리스트</h2><ul><li>서울 리전과 금지 서비스가 설계 노트에 표시됐습니다.</li><li>Client→CloudFront→ALB/EKS 및 S3 경로를 설명할 수 있습니다.</li><li>USER·PRODUCT·STRESS의 API, 정상 코드와 SLO가 표로 정리됐습니다.</li><li>403과 404가 어떤 요청에서 발생해야 하는지 구분했습니다.</li><li>지정 RDS와 EC2 타입, 최소 리소스 수량을 기록했습니다.</li><li>최종 Endpoint 제출 형식이 프로토콜 포함·경로 제외임을 확인했습니다.</li><li>3시간 구축 순서와 단계별 중단·검증 지점을 정했습니다.</li><li>비밀번호·Access Key를 문서나 Git에 기록하지 않았습니다.</li></ul></section>`;}if(n===2){document.getElementById('lesson-extra').innerHTML=`
 <section class="panel"><h2>권장 네트워크 구성도</h2><div class="diagram">Internet
    │ HTTPS 443
    ▼
