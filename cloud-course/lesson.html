@@ -328,7 +328,13 @@ set +a
 for key in MYSQL_USER MYSQL_PASSWORD MYSQL_HOST MYSQL_PORT MYSQL_DBNAME; do
   test -n "\${!key}" &amp;&amp; echo "$key=SET" || echo "$key=MISSING"
 done</pre><p class="tip"><code>MYSQL_HOST</code>에는 RDS endpoint만 입력합니다. <code>mysql://</code>, 포트, 데이터베이스명 또는 MySQL 엔진명을 함께 넣지 않습니다.</p></section>
-<section class="panel"><h2>공통 실행·종료 절차</h2><pre class="code-block">cd ~/app-test/bin
+<section class="panel"><h2>API 검증은 어디서 하나요?</h2><p>4차시는 ALB나 EKS에 배포하기 전의 <strong>EC2 로컬 단독 실행 검증</strong>입니다. 3차시에서 RDS 접속에 사용한 실습용 EC2 한 대에 바이너리를 올리고, 같은 EC2에 터미널을 두 개 열어 실행과 검증을 분리합니다.</p><div class="diagram">내 PC
+├── Session Manager/SSH 터미널 A → 실습용 EC2
+│      └── USER 또는 PRODUCT 또는 STRESS 실행
+└── Session Manager/SSH 터미널 B → 같은 실습용 EC2
+       └── curl http://127.0.0.1:8080/... 로 API 검증
+
+실습용 EC2 ── TCP 3306 ──▶ RDS MySQL</div><div class="table-wrap"><table class="network-table"><thead><tr><th>검증 단계</th><th>실행 위치</th><th>접속 주소</th><th>의미</th></tr></thead><tbody><tr><td>4차시 단독 실행</td><td>앱을 실행한 동일 EC2의 터미널 B</td><td><code>http://127.0.0.1:8080</code></td><td>바이너리·환경변수·RDS만 검증</td></tr><tr><td>5차시 Docker</td><td>Docker를 실행한 EC2</td><td><code>http://127.0.0.1:8080</code></td><td>컨테이너 포트 매핑 검증</td></tr><tr><td>9차시 EKS 내부</td><td>클러스터 내부 임시 Pod</td><td>ClusterIP Service DNS</td><td>Deployment·Service 검증</td></tr><tr><td>10차시 이후 외부</td><td>내 PC 또는 외부 테스트 서버</td><td><code>https://&lt;FINAL_ENDPOINT&gt;</code></td><td>실제 사용자·채점 경로 검증</td></tr></tbody></table></div><p class="tip">4차시에서는 EC2의 Public IP나 RDS Endpoint로 API를 호출하지 않습니다. <code>127.0.0.1</code>은 “현재 앱이 실행 중인 같은 EC2”를 뜻합니다. 터미널 B를 새로 열면 아래 공통 테스트 변수를 다시 설정해야 합니다.</p></section><section class="panel"><h2>공통 실행·종료 절차</h2><p><strong>터미널 A:</strong> 실습용 EC2에 접속해 환경변수를 불러오고 앱 하나를 실행합니다. 이 터미널에서 PID와 로그를 관리합니다.</p><pre class="code-block">cd ~/app-test/bin
 APP=user                         # product 또는 stress로 변경
 
 ./$APP &gt;&gt; ~/app-test/logs/$APP.log 2&gt;&amp;1 &amp;
@@ -345,12 +351,12 @@ kill "$(cat ~/app-test/$APP.pid)"
 rm -f ~/app-test/$APP.pid
 sleep 1
 ! ss -lntp | grep -q :8080 &amp;&amp; echo 'port 8080 released'</pre></section>
-<section class="panel"><h2>공통 테스트 변수</h2><pre class="code-block">BASE=http://127.0.0.1:8080
+<section class="panel"><h2>공통 테스트 변수</h2><p><strong>터미널 B:</strong> 같은 실습용 EC2에 새 Session Manager/SSH 세션을 열고 아래 변수를 설정합니다. 이후 모든 <code>curl</code> 명령은 이 터미널에서 실행합니다.</p><pre class="code-block">BASE=http://127.0.0.1:8080
 REQUEST_ID=999999999999
 UUID=7c5a3c6a-758f-4bc5-9bdf-3e573a0ad729
 EMAIL=dbdump500001@example.org
 PRODUCT_ID=dbdump500001</pre></section>
-<section class="panel"><h2>USER API 검증</h2><pre class="code-block"># POST: 사용자 생성 → 201
+<section class="panel"><h2>USER API 검증</h2><p><strong>실행 장소:</strong> 터미널 A에서 <code>user</code> 바이너리가 실행 중인 상태로, 같은 EC2의 터미널 B에서 수행합니다. 먼저 <code>curl -i "$BASE/healthcheck"</code>가 200인지 확인합니다.</p><pre class="code-block"># POST: 사용자 생성 → 201
 curl -i -X POST "$BASE/v1/user" \
   -H 'Content-Type: application/json' \
   -d "{\"requestid\":\"$REQUEST_ID\",\"uuid\":\"$UUID\",\"username\":\"practice-user-001\",\"email\":\"practice-user-001@example.org\"}"
@@ -360,7 +366,7 @@ curl -i -G "$BASE/v1/user" \
   --data-urlencode "email=$EMAIL" \
   --data-urlencode "requestid=$REQUEST_ID" \
   --data-urlencode "uuid=$UUID"</pre><p class="tip">지급 dump와 충돌하지 않는 고유한 username/email을 POST 테스트에 사용합니다. 반복 테스트 시 같은 값으로 인한 중복 오류와 시스템 장애를 구분하세요.</p></section>
-<section class="panel"><h2>PRODUCT API 검증</h2><pre class="code-block"># POST: 상품 생성 → 201
+<section class="panel"><h2>PRODUCT API 검증</h2><p><strong>실행 장소:</strong> USER를 종료한 뒤 터미널 A에서 <code>product</code>를 실행하고, 같은 EC2의 터미널 B에서 수행합니다. USER가 아직 8080을 사용 중이면 PRODUCT를 실행할 수 없습니다.</p><pre class="code-block"># POST: 상품 생성 → 201
 curl -i -X POST "$BASE/v1/product" \
   -H 'Content-Type: application/json' \
   -d "{\"requestid\":\"$REQUEST_ID\",\"uuid\":\"$UUID\",\"id\":\"practice-product-001\",\"name\":\"practice-product\",\"price\":1234}"
@@ -378,17 +384,17 @@ curl -i -X PUT "$BASE/v1/product" \
   -F "uuid=$UUID" \
   -F 'id=practice-product-001' \
   -F 'image=@/home/ec2-user/app-test/images/small.jpg;type=image/jpeg'</pre><p class="tip">실제 지급 바이너리의 multipart 필드명이 별도 자료에 지정되어 있다면 그 값을 우선합니다. 업로드 후 DB의 <code>image_path</code> 변경과 S3 객체 생성 여부는 11차시에서 함께 검증합니다.</p></section>
-<section class="panel"><h2>STRESS API 검증</h2><pre class="code-block">curl -i -X POST "$BASE/v1/stress" \
+<section class="panel"><h2>STRESS API 검증</h2><p><strong>실행 장소:</strong> PRODUCT를 종료한 뒤 터미널 A에서 <code>stress</code>를 실행하고, 같은 EC2의 터미널 B에서 기능 확인 요청을 1회 실행합니다.</p><pre class="code-block">curl -i -X POST "$BASE/v1/stress" \
   -H 'Content-Type: application/json' \
   -d "{\"requestid\":\"$REQUEST_ID\",\"uuid\":\"$UUID\",\"length\":256}"</pre><p class="tip">STRESS 요청은 CPU 사용량을 높일 수 있습니다. 기능 확인에는 1회만 호출하고 반복 부하는 14차시 성능 측정에서 제한된 시간 동안 수행합니다.</p></section>
-<section class="panel"><h2>403·404 사전 확인</h2><pre class="code-block"># 정상 API지만 requestid/uuid 누락 → 403 기대
+<section class="panel"><h2>403·404 사전 확인</h2><p><strong>실행 장소:</strong> 검사하려는 앱이 터미널 A에서 실행 중일 때 같은 EC2의 터미널 B에서 호출합니다. 아래 USER 예시는 USER 실행 상태에서 검사합니다.</p><pre class="code-block"># 정상 API지만 requestid/uuid 누락 → 403 기대
 curl -s -o /dev/null -w 'invalid=%{http_code}\n' \
   "$BASE/v1/user?email=$EMAIL"
 
 # 존재하지 않는 API → 404 기대
 curl -s -o /dev/null -w 'missing=%{http_code}\n' \
   "$BASE/v1/none"</pre><p>Ingress 또는 WAF에서 최종 규칙을 적용하기 전이라 바이너리 단독 실행 결과가 다를 수 있습니다. 이 경우 결과를 기록하고 12차시에서 최종 403/404를 구성합니다.</p></section>
-<section class="panel"><h2>응답시간 측정</h2><pre class="code-block">curl -s -o /dev/null \
+<section class="panel"><h2>응답시간 측정</h2><p><strong>실행 장소:</strong> 각 앱이 실행 중인 동안 같은 EC2의 터미널 B에서 측정합니다. 이 값은 네트워크 구간이 짧은 로컬 기준선이며 최종 채점 기준은 10차시 이후 외부 Endpoint에서 다시 측정합니다.</p><pre class="code-block">curl -s -o /dev/null \
   -w 'code=%{http_code} total=%{time_total}s\n' \
   "$BASE/healthcheck"
 
