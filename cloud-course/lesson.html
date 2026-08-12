@@ -334,7 +334,50 @@ done</pre><p class="tip"><code>MYSQL_HOST</code>에는 RDS endpoint만 입력합
 └── Session Manager/SSH 터미널 B → 같은 실습용 EC2
        └── curl http://127.0.0.1:8080/... 로 API 검증
 
-실습용 EC2 ── TCP 3306 ──▶ RDS MySQL</div><div class="table-wrap"><table class="network-table"><thead><tr><th>검증 단계</th><th>실행 위치</th><th>접속 주소</th><th>의미</th></tr></thead><tbody><tr><td>4차시 단독 실행</td><td>앱을 실행한 동일 EC2의 터미널 B</td><td><code>http://127.0.0.1:8080</code></td><td>바이너리·환경변수·RDS만 검증</td></tr><tr><td>5차시 Docker</td><td>Docker를 실행한 EC2</td><td><code>http://127.0.0.1:8080</code></td><td>컨테이너 포트 매핑 검증</td></tr><tr><td>9차시 EKS 내부</td><td>클러스터 내부 임시 Pod</td><td>ClusterIP Service DNS</td><td>Deployment·Service 검증</td></tr><tr><td>10차시 이후 외부</td><td>내 PC 또는 외부 테스트 서버</td><td><code>https://&lt;FINAL_ENDPOINT&gt;</code></td><td>실제 사용자·채점 경로 검증</td></tr></tbody></table></div><p class="tip">4차시에서는 EC2의 Public IP나 RDS Endpoint로 API를 호출하지 않습니다. <code>127.0.0.1</code>은 “현재 앱이 실행 중인 같은 EC2”를 뜻합니다. 터미널 B를 새로 열면 아래 공통 테스트 변수를 다시 설정해야 합니다.</p></section><section class="panel"><h2>공통 실행·종료 절차</h2><p><strong>터미널 A:</strong> 실습용 EC2에 접속해 환경변수를 불러오고 앱 하나를 실행합니다. 이 터미널에서 PID와 로그를 관리합니다.</p><pre class="code-block">cd ~/app-test/bin
+실습용 EC2 ── TCP 3306 ──▶ RDS MySQL</div><div class="table-wrap"><table class="network-table"><thead><tr><th>검증 단계</th><th>실행 위치</th><th>접속 주소</th><th>의미</th></tr></thead><tbody><tr><td>4차시 단독 실행</td><td>앱을 실행한 동일 EC2의 터미널 B</td><td><code>http://127.0.0.1:8080</code></td><td>바이너리·환경변수·RDS만 검증</td></tr><tr><td>5차시 Docker</td><td>Docker를 실행한 EC2</td><td><code>http://127.0.0.1:8080</code></td><td>컨테이너 포트 매핑 검증</td></tr><tr><td>9차시 EKS 내부</td><td>클러스터 내부 임시 Pod</td><td>ClusterIP Service DNS</td><td>Deployment·Service 검증</td></tr><tr><td>10차시 이후 외부</td><td>내 PC 또는 외부 테스트 서버</td><td><code>https://&lt;FINAL_ENDPOINT&gt;</code></td><td>실제 사용자·채점 경로 검증</td></tr></tbody></table></div><p class="tip">4차시에서는 EC2의 Public IP나 RDS Endpoint로 API를 호출하지 않습니다. <code>127.0.0.1</code>은 “현재 앱이 실행 중인 같은 EC2”를 뜻합니다. 터미널 B를 새로 열면 아래 공통 테스트 변수를 다시 설정해야 합니다.</p></section><section class="panel"><h2>EC2가 두 대 필요한가요?</h2><p><strong>아닙니다. 4차시에는 실습용 EC2 한 대만 사용합니다.</strong> “터미널 A·B”는 서로 다른 EC2가 아니라 같은 EC2에 접속한 두 개의 Session Manager 또는 SSH 세션입니다. 창을 두 개로 나누는 이유는 한쪽에서 앱을 실행한 채 다른 쪽에서 요청과 로그를 편하게 확인하기 위해서입니다.</p><div class="diagram">필요한 AWS 리소스
+├── 실습용 EC2 1대 (Amazon Linux 2023, t3.medium)
+│    ├── 접속 세션 A: 애플리케이션 실행
+│    └── 접속 세션 B: curl·포트·응답시간 검사
+└── RDS 1개 (3차시에서 만든 apdev-rds-instance)
+
+EC2 2대를 만드는 구성이 아님</div><div class="table-wrap"><table class="network-table"><thead><tr><th>구분</th><th>터미널 A</th><th>터미널 B</th></tr></thead><tbody><tr><td>접속 대상</td><td colspan="2"><strong>동일한 EC2 Instance ID</strong></td></tr><tr><td>역할</td><td>환경변수 적용, 앱 실행·종료, 로그 확인</td><td><code>curl</code>, <code>ss</code>, 응답코드·시간 확인</td></tr><tr><td>사용 주소</td><td>TCP 8080에서 Listen</td><td><code>http://127.0.0.1:8080</code></td></tr><tr><td>필요한 Public IP</td><td colspan="2">Session Manager 사용 시 없음</td></tr></tbody></table></div></section>
+<section class="panel"><h2>같은 EC2에 터미널 두 개 여는 방법</h2><ol><li>AWS Console → EC2 → Instances에서 실습용 인스턴스를 선택합니다.</li><li><strong>Connect → Session Manager → Connect</strong>를 눌러 첫 번째 탭을 엽니다. 이것을 터미널 A로 사용합니다.</li><li>브라우저의 EC2 Console 탭으로 돌아가 같은 인스턴스에서 Connect를 다시 눌러 두 번째 세션을 엽니다. 이것을 터미널 B로 사용합니다.</li><li>각 터미널에서 <code>curl -s http://169.254.169.254/latest/meta-data/instance-id</code>를 실행하려면 IMDSv2 Token이 필요할 수 있으므로, 더 간단하게 <code>hostname</code> 결과가 같은지 확인합니다.</li><li>터미널 A에서 앱을 실행하고 터미널 B에서 <code>curl http://127.0.0.1:8080/healthcheck</code>를 실행합니다.</li></ol><pre class="code-block"># 터미널 A와 B에서 각각 실행
+hostname
+pwd
+
+# 두 터미널의 hostname이 같으면 동일 EC2에 접속한 것</pre></section>
+<section class="panel"><h2>터미널을 하나만 사용하는 방법</h2><p>세션을 두 개 열 수 없다면 앱을 백그라운드로 실행하고 같은 터미널에서 API를 검증해도 됩니다. 기능상 차이는 없습니다.</p><pre class="code-block">cd ~/app-test/bin
+set -a
+source ~/app-test/mysql.env
+set +a
+
+./user &gt; ~/app-test/logs/user.log 2&gt;&amp;1 &amp;
+USER_PID=$!
+
+sleep 2
+curl -i http://127.0.0.1:8080/healthcheck
+tail -n 30 ~/app-test/logs/user.log
+
+# USER 검증을 모두 마친 뒤 종료
+kill "$USER_PID"
+wait "$USER_PID" 2&gt;/dev/null || true</pre><p class="tip">세션이 끊어질 가능성이 있으면 PID를 파일에 기록합니다. <code>nohup</code>이나 systemd를 사용해도 되지만 4차시의 짧은 단독 검증에는 필수가 아닙니다.</p></section>
+<section class="panel"><h2>세 애플리케이션 검증 순서</h2><div class="diagram">USER 실행
+  → healthcheck
+  → USER POST·GET
+  → 403·404·응답시간 기록
+  → USER 종료·8080 해제 확인
+        ↓
+PRODUCT 실행
+  → healthcheck
+  → PRODUCT POST·GET·PUT
+  → 403·404·응답시간 기록
+  → PRODUCT 종료·8080 해제 확인
+        ↓
+STRESS 실행
+  → healthcheck
+  → STRESS POST 1회
+  → 응답시간 기록
+  → STRESS 종료·8080 해제 확인</div><p class="tip">세 바이너리가 모두 TCP 8080을 사용하므로 같은 EC2에서 동시에 실행하면 <code>address already in use</code>가 발생합니다. 앞 앱을 종료하고 <code>! ss -lntp | grep -q :8080</code>으로 포트 해제를 확인한 뒤 다음 앱을 실행합니다.</p></section><section class="panel"><h2>공통 실행·종료 절차</h2><p><strong>터미널 A:</strong> 실습용 EC2에 접속해 환경변수를 불러오고 앱 하나를 실행합니다. 이 터미널에서 PID와 로그를 관리합니다.</p><pre class="code-block">cd ~/app-test/bin
 APP=user                         # product 또는 stress로 변경
 
 ./$APP &gt;&gt; ~/app-test/logs/$APP.log 2&gt;&amp;1 &amp;
