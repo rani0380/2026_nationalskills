@@ -8,8 +8,8 @@ request(){ local m="$1" p="$2" b="${3:-}"; if [[ -n "$b" ]]; then curl -ksS --ma
 UB=$(printf '{"requestid":"%s","uuid":"%s","username":"practice-%s","email":"%s"}' "$RID" "$UUID" "$RID" "$EMAIL")
 PB=$(printf '{"requestid":"%s","uuid":"%s","id":"%s","name":"practice-product","price":1234}' "$RID" "$UUID" "$PID")
 SB=$(printf '{"requestid":"%s","uuid":"%s","length":256}' "$RID" "$UUID")
-UC="$(request POST /v1/user "$UB")"; PC="$(request POST /v1/product "$PB")"
-run_load(){ local k="$1" lim="$2" ok=0 fast=0 i code sec path method body; for ((i=1;i<=REQUESTS;i++)); do case "$k" in user) method=GET; path="/v1/user?email=${EMAIL}&requestid=${RID}${i}&uuid=${UUID}"; body="";; product) method=GET; path="/v1/product?id=${PID}&requestid=${RID}${i}&uuid=${UUID}"; body="";; stress) method=POST; path="/v1/stress"; body="$SB";; esac; read -r code sec <<<"$(request "$method" "$path" "$body")"; [[ "$code" =~ ^2 ]] && ((ok+=1)); if [[ "$code" =~ ^2 ]] && awk -v t="$sec" -v l="$lim" 'BEGIN{exit !(t<=l)}'; then ((fast+=1)); fi; done; awk -v n="$REQUESTS" -v s="$ok" -v f="$fast" 'BEGIN{printf "%.2f %.2f",s*100/n,f*100/n}'; }
+UC="$(request POST "/v1/user?requestid=${RID}&uuid=${UUID}" "$UB")"; PC="$(request POST "/v1/product?requestid=${RID}&uuid=${UUID}" "$PB")"
+run_load(){ local k="$1" lim="$2" ok=0 fast=0 i code sec path method body; for ((i=1;i<=REQUESTS;i++)); do case "$k" in user) method=GET; path="/v1/user?email=${EMAIL}&requestid=${RID}${i}&uuid=${UUID}"; body="";; product) method=GET; path="/v1/product?id=${PID}&requestid=${RID}${i}&uuid=${UUID}"; body="";; stress) method=POST; path="/v1/stress?requestid=${RID}${i}&uuid=${UUID}"; body="$SB";; esac; read -r code sec <<<"$(request "$method" "$path" "$body")"; [[ "$code" =~ ^2 ]] && ((ok+=1)); if [[ "$code" =~ ^2 ]] && awk -v t="$sec" -v l="$lim" 'BEGIN{exit !(t<=l)}'; then ((fast+=1)); fi; done; awk -v n="$REQUESTS" -v s="$ok" -v f="$fast" 'BEGIN{printf "%.2f %.2f",s*100/n,f*100/n}'; }
 echo "USER 측정"; read -r UA UP <<<"$(run_load user .2)"
 echo "PRODUCT 측정"; read -r PA PP <<<"$(run_load product .2)"
 echo "STRESS 측정"; read -r SA SP <<<"$(run_load stress 1)"
