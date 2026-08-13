@@ -1,4 +1,4 @@
-﻿const lessonTitles = [
+const lessonTitles = [
   '과제 분석과 전체 아키텍처 이해',
   'VPC·Subnet·Security Group',
   'RDS MySQL과 데이터 적재',
@@ -26,6 +26,14 @@ const flowSteps = [
 ];
 
 const lessonHeading = document.querySelector('h2');
+const heroActions = document.querySelector('.hero .actions');
+if (heroActions && !heroActions.querySelector('[href="grader.html"]')) {
+  const graderLink = document.createElement('a');
+  graderLink.className = 'btn alt';
+  graderLink.href = 'grader.html';
+  graderLink.textContent = '모의 채점실';
+  heroActions.appendChild(graderLink);
+}
 const flowSection = document.createElement('section');
 flowSection.className = 'learning-flow';
 flowSection.innerHTML = `
