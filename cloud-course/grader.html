@@ -6,8 +6,39 @@
 <section class="hero"><div class="tag">SYSTEM OPERATION · 제3과제</div><h1>모의 채점실</h1><p>학생이 구축한 단일 Endpoint의 실측 결과를 공식 채점기준에 따라 40점 만점으로 계산합니다. 실제 대회 점수를 보장하지 않는 교육용 도구입니다.</p></section>
 <div class="layout"><section class="panel"><h2>1. Endpoint 입력</h2><p class="muted">프로토콜과 주소만 입력하고 경로는 넣지 마세요.</p><div class="row"><input id="endpoint" placeholder="https://example.org"><button id="validate">형식 확인</button></div><div id="status" class="status">Endpoint를 입력하세요.</div><div class="notice">GitHub Pages에서는 CORS 때문에 학생 ALB의 응답을 읽지 못할 수 있습니다. 아래 스크립트를 EC2 또는 CloudShell에서 실행하면 CORS와 무관하게 측정할 수 있습니다.</div></section>
 <aside class="panel score"><div><div class="ring" id="ring"><div class="scoreval"><b id="total">0.0</b><span>/ 40점</span></div></div><div class="parts"><div class="part">비정상·이미지<b id="p1">0 / 4</b></div><div class="part">가용성<b id="p2">0 / 12</b></div><div class="part">성능<b id="p3">0 / 12</b></div><div class="part">비용<b id="p4">0 / 12</b></div></div></div></aside></div>
-<section class="panel"><h2>2. EC2 실측</h2><p class="muted">연습 환경의 관리용 Amazon Linux 2023 EC2에서 실행하세요. USER와 PRODUCT 테스트 레코드를 생성합니다.</p><div class="actions"><a class="btn" href="downloads/mock-grader.sh" download>채점 스크립트 다운로드</a><button class="secondary" id="copy">실행 명령 복사</button></div><div class="notice"><code id="cmd">chmod +x mock-grader.sh<br>./mock-grader.sh https://YOUR-ENDPOINT</code></div><p class="muted">이미지 측정: <code>./mock-grader.sh https://YOUR-ENDPOINT /images/existing.jpg</code></p></section>
-<section class="panel"><h2>3. 결과 JSON 불러오기</h2><p class="muted"><code>mock-grader-result.json</code>은 서버에 업로드되지 않고 브라우저에서만 처리됩니다.</p><div class="actions"><label class="btn" for="file">결과 파일 선택</label><input class="hidden" id="file" type="file" accept=".json,application/json"><button class="secondary" id="browser">브라우저 기본 점검</button></div><div id="checks" class="checks"><div class="check"><div>측정 결과 없음<small>스크립트를 실행하고 JSON을 선택하세요.</small></div><span class="badge">대기</span></div></div></section>
+<section class="panel"><h2>2. EC2 실측 — 처음부터 따라하기</h2>
+<p class="muted">가장 쉬운 방법은 <strong>관리용 Amazon Linux 2023 EC2 터미널</strong>에서 스크립트를 직접 내려받는 것입니다. USER·PRODUCT 테스트 레코드가 생성되므로 연습 환경에서 실행하세요.</p>
+<h3>① EC2에 접속하고 도구를 확인합니다</h3>
+<div class="notice"><code>curl --version<br>pwd</code></div>
+<p class="muted"><code>curl: command not found</code>이면 <code>sudo dnf install -y curl</code>을 실행합니다.</p>
+<h3>② EC2 터미널에서 채점 스크립트를 받습니다</h3>
+<div class="notice"><code>cd ~<br>curl -fLO https://rani0380.github.io/2026_nationalskills/cloud-course/downloads/mock-grader.sh<br>ls -l mock-grader.sh</code></div>
+<p class="muted">웹페이지의 ‘채점 스크립트 다운로드’ 버튼은 내 PC로 받는 방식입니다. 위 <code>curl</code> 명령은 EC2로 바로 받기 때문에 파일을 다시 업로드할 필요가 없습니다.</p>
+<h3>③ 실행 권한을 주고 학생 Endpoint를 넣어 실행합니다</h3>
+<div class="actions"><a class="btn" href="downloads/mock-grader.sh" download>내 PC로 스크립트 받기</a><button class="secondary" id="copy">현재 Endpoint 실행 명령 복사</button></div>
+<div class="notice"><code id="cmd">chmod +x mock-grader.sh<br>./mock-grader.sh https://YOUR-ENDPOINT</code></div>
+<p class="muted">현재 예시라면 <code>./mock-grader.sh https://d1et5ku4ujv4y2.cloudfront.net</code>입니다. 주소 뒤에 <code>/v1/user</code> 같은 경로를 붙이지 않습니다. 기본 요청 수는 API당 40회이며 약간의 시간이 걸립니다.</p>
+<h3>④ Image 처리율도 채점하려면 존재하는 이미지 경로를 추가합니다</h3>
+<div class="notice"><code>./mock-grader.sh https://d1et5ku4ujv4y2.cloudfront.net /images/product50001.jpg</code></div>
+<p class="muted"><code>/images/product50001.jpg</code>는 예시입니다. S3에 실제로 존재하고 인터넷에서 HTTP 200으로 열리는 이미지 경로로 바꾸세요. 두 번째 인자를 생략하면 Image 처리율은 0%로 기록됩니다.</p>
+<h3>⑤ 완료 파일을 확인합니다</h3>
+<div class="notice"><code>ls -lh mock-grader-result.json<br>cat mock-grader-result.json</code></div>
+<p class="muted"><code>완료: mock-grader-result.json</code>이 출력되면 측정이 끝난 것입니다. 실행 중 <code>Ctrl+C</code>를 누르면 결과 파일이 완성되지 않으므로 다시 실행하세요.</p></section>
+
+<section class="panel"><h2>3. 결과 JSON을 PC로 가져와 불러오기</h2>
+<p class="muted">아래 방법 중 하나로 EC2의 <code>mock-grader-result.json</code>을 현재 브라우저가 실행 중인 PC에 가져옵니다. 결과는 이 페이지 서버로 전송되지 않습니다.</p>
+<h3>방법 A — SSH/SCP를 사용하는 경우</h3>
+<p class="muted">내 PC의 PowerShell에서 실행합니다. EC2 터미널에서 실행하는 명령이 아닙니다.</p>
+<div class="notice"><code>scp -i C:키폴더student-key.pem ec2-user@EC2_PUBLIC_IP:~/mock-grader-result.json .</code></div>
+<h3>방법 B — EC2 Instance Connect만 사용하는 경우</h3>
+<p class="muted">EC2에서 <code>cat mock-grader-result.json</code>을 실행하고, 출력된 <code>{</code>부터 마지막 <code>}</code>까지 복사합니다. PC의 메모장에 붙여 넣고 파일명을 <code>mock-grader-result.json</code>, 파일 형식을 ‘모든 파일’, 인코딩을 UTF-8로 저장합니다.</p>
+<h3>방법 C — AWS CloudShell에서 실행한 경우</h3>
+<p class="muted">CloudShell 메뉴의 <strong>Actions → Download file</strong>을 선택하고 <code>mock-grader-result.json</code>을 입력해 내려받습니다.</p>
+<div class="actions"><label class="btn" for="file">결과 JSON 선택</label><input class="hidden" id="file" type="file" accept=".json,application/json"><button class="secondary" id="browser">브라우저 기본 점검(선택)</button></div>
+<div id="checks" class="checks"><div class="check"><div>측정 결과 없음<small>스크립트 실행 후 mock-grader-result.json을 선택하세요.</small></div><span class="badge">대기</span></div></div>
+<div class="notice"><strong>‘CORS 또는 연결 상태 확인’의 의미:</strong> CloudFront나 ALB가 고장났다는 뜻이 아닙니다. 대상 서버가 브라우저에 <code>Access-Control-Allow-Origin</code> 헤더를 주지 않아 GitHub Pages가 응답 내용을 읽지 못한 것입니다. 이 경우 ‘브라우저 기본 점검’ 결과는 무시하고 EC2 스크립트 결과로 채점하세요.</div>
+<h3>정상적으로 불러오면</h3>
+<p class="muted">아래 USER·PRODUCT·STRESS 가용성과 성능 값이 자동으로 채워지고 오른쪽 위 총점이 바뀝니다. 비용 ratio는 AWS 리소스 구성을 보고 직접 입력해야 합니다.</p></section>
 <section class="panel"><h2>4. 공식 채점값</h2><p class="muted">성공한 요청의 비율을 입력합니다. JSON을 불러오면 자동 입력되며 직접 수정할 수도 있습니다.</p><div class="grid">
 <div class="field"><label>Image 처리율 <span>최대 2점</span></label><input id="image" type="number" min="0" max="100" value="0"></div>
 <div class="field"><label>비정상 요청 처리율 <span>최대 2점</span></label><input id="exception" type="number" min="0" max="100" value="0"></div>
@@ -27,5 +58,5 @@ function endpoint(){try{let u=new URL(q('endpoint').value.trim());if(!/^https?:$
 function show(a){q('checks').innerHTML=a.map(x=>'<div class="check"><div>'+x.name+'<small>'+x.detail+'</small></div><span class="badge '+(x.ok?'ok':'bad')+'">'+(x.ok?'통과':'확인')+'</span></div>').join('')}
 function importData(d){if(d.endpoint){q('endpoint').value=d.endpoint;endpoint()}let m=d.metrics||d,map={image:'image',exception:'exception',user_availability:'ua',user_performance:'up',product_availability:'pa',product_performance:'pp',stress_availability:'sa',stress_performance:'sp',cost_ratio:'cost'};Object.entries(map).forEach(([k,id])=>{if(Number.isFinite(+m[k]))q(id).value=+m[k]});if(d.checks)show(d.checks);calc()}
 function snap(){return{createdAt:new Date().toISOString(),endpoint:q('endpoint').value,metrics:{image:v('image'),exception:v('exception'),user_availability:v('ua'),user_performance:v('up'),product_availability:v('pa'),product_performance:v('pp'),stress_availability:v('sa'),stress_performance:v('sp'),cost_ratio:v('cost')},score:calc()}}
-ids.forEach(x=>q(x).oninput=calc);q('validate').onclick=endpoint;q('file').onchange=async e=>{try{importData(JSON.parse(await e.target.files[0].text()))}catch{alert('올바른 결과 JSON인지 확인하세요.')}};q('browser').onclick=async()=>{let ep=endpoint();if(!ep)return;let a=[];for(let [name,path,expected] of [['Healthcheck','/healthcheck',200],['없는 API','/v1/none',404]])try{let s=performance.now(),r=await fetch(ep+path,{cache:'no-store'});a.push({name,ok:r.status===expected,detail:'HTTP '+r.status+' · '+Math.round(performance.now()-s)+'ms'})}catch{a.push({name,ok:false,detail:'CORS 또는 연결 상태 확인'})}show(a)};q('copy').onclick=async()=>{await navigator.clipboard.writeText('chmod +x mock-grader.sh\n./mock-grader.sh '+(endpoint()||'https://YOUR-ENDPOINT'));q('copy').textContent='복사 완료'};q('save').onclick=()=>{localStorage.setItem('mock-grade',JSON.stringify(snap()));alert('저장했습니다.')};q('download').onclick=()=>{let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(snap(),null,2)],{type:'application/json'}));a.download='practice-score.json';a.click()};q('reset').onclick=()=>{localStorage.removeItem('mock-grade');location.reload()};try{let s=localStorage.getItem('mock-grade');if(s)importData(JSON.parse(s))}catch{}calc();
+ids.forEach(x=>q(x).oninput=calc);q('validate').onclick=endpoint;q('file').onchange=async e=>{try{importData(JSON.parse(await e.target.files[0].text()))}catch{alert('올바른 결과 JSON인지 확인하세요.')}};q('browser').onclick=async()=>{let ep=endpoint();if(!ep)return;let a=[];for(let [name,path,expected] of [['Healthcheck','/healthcheck',200],['없는 API','/v1/none',404]])try{let s=performance.now(),r=await fetch(ep+path,{cache:'no-store'});a.push({name,ok:r.status===expected,detail:'HTTP '+r.status+' · '+Math.round(performance.now()-s)+'ms'})}catch{a.push({name,ok:false,detail:'CORS 또는 연결 상태 확인'})}show(a)};q('copy').onclick=async()=>{await navigator.clipboard.writeText('chmod +x mock-grader.sh\n./mock-grader.sh '+(endpoint()||'https://YOUR-ENDPOINT'));q('copy').textContent='복사 완료';setTimeout(()=>q('copy').textContent='현재 Endpoint 실행 명령 복사',1500)};q('save').onclick=()=>{localStorage.setItem('mock-grade',JSON.stringify(snap()));alert('저장했습니다.')};q('download').onclick=()=>{let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(snap(),null,2)],{type:'application/json'}));a.download='practice-score.json';a.click()};q('reset').onclick=()=>{localStorage.removeItem('mock-grade');location.reload()};try{let s=localStorage.getItem('mock-grade');if(s)importData(JSON.parse(s))}catch{}calc();
 </script></body></html>
