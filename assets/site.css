@@ -643,3 +643,20 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+.score-submit__secondary {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.score-submit__download {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #c7d8ea;
+  border-radius: 8px;
+  background: #f5f9ff;
+}
+
+.score-submit__download p {
+  margin: 10px 0;
+}

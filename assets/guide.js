@@ -95,6 +95,13 @@ function mountScoreSubmissionForm() {
       <h2>채점 결과 제출</h2>
       <p>CloudShell에서 <code>mark.sh</code>를 실행한 뒤 전체 출력을 붙여넣으면 Google Sheets로 전송됩니다.</p>
     </div>
+    <div class="score-submit__download" role="group" aria-label="채점 스크립트 다운로드">
+      <strong>채점 스크립트 준비</strong>
+      <p><a class="score-submit__secondary" href="downloads/mark.sh" download="mark.sh">mark.sh 다운로드</a></p>
+      <p>CloudShell에서 바로 받으려면 아래 명령을 실행하세요.</p>
+      <pre><code>curl -fL "https://rani0380.github.io/2026_nationalskills/downloads/mark.sh" -o ~/mark.sh &amp;&amp; chmod +x ~/mark.sh
+bash ~/mark.sh</code></pre>
+    </div>
     <div class="score-submit__notice" role="note">
       <strong>보안 확인</strong>
       <p>AWS Access Key, Secret Access Key, Session Token, 비밀번호는 제출하지 마세요. 채점 스크립트 출력만 붙여넣으세요.</p>
