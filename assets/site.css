@@ -448,6 +448,140 @@ h1 {
   font-weight: 800;
 }
 
+.score-submit {
+  margin-top: 52px;
+  padding: 28px;
+  border: 2px solid #9cb7d4;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.score-submit__heading h2 {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.score-submit__notice,
+.score-submit__setup {
+  margin: 18px 0;
+  padding: 14px 16px;
+  border-radius: 8px;
+}
+
+.score-submit__notice {
+  border: 1px solid #e6bd55;
+  background: #fff8df;
+}
+
+.score-submit__notice p,
+.score-submit__setup {
+  margin: 4px 0 0;
+}
+
+.score-submit__setup {
+  border: 1px solid #ef9a9a;
+  background: #fff1f1;
+  color: #8f1d1d;
+}
+
+.score-submit__form,
+.score-submit__wide {
+  display: block;
+}
+
+.score-submit__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.score-submit label {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.score-submit input[type="text"],
+.score-submit input:not([type]),
+.score-submit textarea {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 7px;
+  padding: 11px 12px;
+  border: 1px solid #b9c8d8;
+  border-radius: 7px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+}
+
+.score-submit textarea {
+  resize: vertical;
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 13px;
+}
+
+.score-submit__wide {
+  grid-column: 1 / -1;
+  margin-top: 14px;
+}
+
+.score-submit__confirm {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 14px;
+  font-weight: 700 !important;
+}
+
+.score-submit__confirm input {
+  margin-top: 4px;
+}
+
+.score-submit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.score-submit__button,
+.score-submit__secondary {
+  padding: 11px 18px;
+  border-radius: 7px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.score-submit__button {
+  border: 1px solid var(--blue);
+  background: var(--blue);
+  color: var(--white);
+}
+
+.score-submit__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.score-submit__secondary {
+  border: 1px solid #9cb7d4;
+  background: var(--white);
+  color: var(--blue);
+}
+
+.score-submit__status {
+  min-height: 24px;
+  margin: 14px 0 0;
+  font-weight: 800;
+}
+
+.score-submit__status.is-success { color: #137333; }
+.score-submit__status.is-error { color: #b91c1c; }
+.score-submit__trap,
+.score-submit__frame { display: none; }
+
 @media (max-width: 860px) {
   .guide-grid,
   .checklist,
@@ -503,5 +637,9 @@ h1 {
 
   .markdown-body {
     padding: 22px;
+  }
+
+  .score-submit__grid {
+    grid-template-columns: 1fr;
   }
 }

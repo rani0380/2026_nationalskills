@@ -74,10 +74,138 @@ fetch(encodeURI(selected.file))
   })
   .then((markdown) => {
     document.getElementById("content").innerHTML = renderMarkdown(markdown);
+    if (docKey === "task02first") {
+      mountScoreSubmissionForm();
+    }
   })
   .catch((error) => {
     document.getElementById("content").innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
   });
+
+function mountScoreSubmissionForm() {
+  const config = window.SCORE_SUBMISSION_CONFIG || {};
+  const endpoint = String(config.endpoint || "").trim();
+  const configured = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(endpoint);
+  const section = document.createElement("section");
+  section.className = "score-submit";
+  section.id = "score-submit";
+  section.innerHTML = `
+    <div class="score-submit__heading">
+      <p class="eyebrow">Submit result</p>
+      <h2>채점 결과 제출</h2>
+      <p>CloudShell에서 <code>mark.sh</code>를 실행한 뒤 전체 출력을 붙여넣으면 Google Sheets로 전송됩니다.</p>
+    </div>
+    <div class="score-submit__notice" role="note">
+      <strong>보안 확인</strong>
+      <p>AWS Access Key, Secret Access Key, Session Token, 비밀번호는 제출하지 마세요. 채점 스크립트 출력만 붙여넣으세요.</p>
+    </div>
+    ${configured ? "" : `<p class="score-submit__setup">Google Sheets 수신 주소가 아직 설정되지 않았습니다. 관리자가 <code>assets/submission-config.js</code>에 Apps Script <code>/exec</code> 주소를 등록하면 전송 버튼이 활성화됩니다.</p>`}
+    <form class="score-submit__form" method="post" target="score-submit-frame" novalidate>
+      <input type="hidden" name="taskKey" value="${escapeHtml(String(config.taskKey || "task02first"))}">
+      <input type="hidden" name="taskName" value="${escapeHtml(String(config.taskName || "02_1과제_1등"))}">
+      <input type="hidden" name="submittedAt" value="">
+      <input type="hidden" name="pageUrl" value="">
+      <div class="score-submit__grid">
+        <label>비번호 <input name="studentNo" autocomplete="off" maxlength="30" required></label>
+        <label>이름 <input name="studentName" autocomplete="name" maxlength="50" required></label>
+        <label class="score-submit__wide">학교/소속 <input name="school" autocomplete="organization" maxlength="100"></label>
+      </div>
+      <label class="score-submit__wide">채점 결과
+        <textarea name="scoreOutput" rows="18" maxlength="45000" placeholder="CloudShell에서 bash ~/mark.sh 실행 후 출력 전체를 붙여넣으세요." required></textarea>
+      </label>
+      <label class="score-submit__trap" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off"></label>
+      <label class="score-submit__confirm">
+        <input type="checkbox" name="safeConfirmed" value="yes" required>
+        비밀키·세션 토큰·비밀번호가 포함되지 않았음을 확인했습니다.
+      </label>
+      <div class="score-submit__actions">
+        <button class="score-submit__button" type="submit" ${configured ? "" : "disabled"}>Google Sheets로 제출</button>
+        <button class="score-submit__secondary" type="button" data-download-result>결과 파일 저장</button>
+      </div>
+      <p class="score-submit__status" role="status" aria-live="polite"></p>
+    </form>
+    <iframe class="score-submit__frame" name="score-submit-frame" title="채점 결과 제출 응답"></iframe>
+  `;
+
+  document.getElementById("content").appendChild(section);
+  const form = section.querySelector("form");
+  const status = section.querySelector(".score-submit__status");
+  const frame = section.querySelector("iframe");
+  let submitted = false;
+
+  if (configured) {
+    form.action = endpoint;
+  }
+
+  form.addEventListener("submit", (event) => {
+    status.className = "score-submit__status";
+    if (!configured) {
+      event.preventDefault();
+      status.textContent = "Google Sheets 수신 주소가 설정되지 않았습니다.";
+      status.classList.add("is-error");
+      return;
+    }
+    if (!form.reportValidity()) {
+      event.preventDefault();
+      return;
+    }
+    const output = form.elements.scoreOutput.value;
+    if (containsPossibleSecret(output)) {
+      event.preventDefault();
+      status.textContent = "Access Key 또는 Secret/Session Token으로 보이는 내용이 있습니다. 민감정보를 제거한 뒤 제출하세요.";
+      status.classList.add("is-error");
+      return;
+    }
+    form.elements.submittedAt.value = new Date().toISOString();
+    form.elements.pageUrl.value = window.location.href;
+    submitted = true;
+    status.textContent = "Google Sheets로 전송 중입니다…";
+    form.querySelector("button[type=submit]").disabled = true;
+  });
+
+  frame.addEventListener("load", () => {
+    if (!submitted) return;
+    submitted = false;
+    status.textContent = "제출 요청을 전송했습니다. 시트에서 새 행을 확인하세요.";
+    status.classList.add("is-success");
+    form.querySelector("button[type=submit]").disabled = false;
+  });
+
+  section.querySelector("[data-download-result]").addEventListener("click", () => {
+    const studentNo = form.elements.studentNo.value.trim() || "unknown";
+    const studentName = form.elements.studentName.value.trim() || "unknown";
+    const output = form.elements.scoreOutput.value;
+    if (!output.trim()) {
+      status.textContent = "저장할 채점 결과를 먼저 붙여넣으세요.";
+      status.className = "score-submit__status is-error";
+      return;
+    }
+    const header = [
+      `과제: ${config.taskName || "02_1과제_1등"}`,
+      `비번호: ${studentNo}`,
+      `이름: ${studentName}`,
+      `저장시각: ${new Date().toLocaleString("ko-KR")}`,
+      "",
+    ].join("\n");
+    const blob = new Blob([header, output], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `mark-result-${safeFilename(studentNo)}-${safeFilename(studentName)}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function containsPossibleSecret(value) {
+  return /AKIA[0-9A-Z]{16}/.test(value)
+    || /(aws_secret_access_key|aws_session_token)\s*[=:]/i.test(value)
+    || /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(value);
+}
+
+function safeFilename(value) {
+  return value.replace(/[^0-9A-Za-z가-힣_-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
+}
 
 function renderMarkdown(markdown) {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
