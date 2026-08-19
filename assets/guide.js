@@ -74,7 +74,7 @@ fetch(encodeURI(selected.file))
   })
   .then((markdown) => {
     document.getElementById("content").innerHTML = renderMarkdown(markdown);
-    if (["task02first", "task02second"].includes(docKey)) {
+    if (["task02first", "task02second", "task02m1"].includes(docKey)) {
       mountScoreSubmissionForm(docKey);
     }
   })
@@ -87,6 +87,7 @@ function mountScoreSubmissionForm(activeTaskKey) {
   const taskNames = {
     task02first: "02_1과제_1등",
     task02second: "02_2과제_1등",
+    task02m1: "02_2과제_Module1_Workflow",
   };
   const config = {
     ...baseConfig,
