@@ -74,7 +74,7 @@ fetch(encodeURI(selected.file))
   })
   .then((markdown) => {
     document.getElementById("content").innerHTML = renderMarkdown(markdown);
-    if (["task02first", "task02second", "task02m1", "task02m2"].includes(docKey)) {
+    if (["task02first", "task02second", "task02m1", "task02m2", "task02m3"].includes(docKey)) {
       mountScoreSubmissionForm(docKey);
     }
   })
@@ -89,6 +89,7 @@ function mountScoreSubmissionForm(activeTaskKey) {
     task02second: "02_2과제_1등",
     task02m1: "02_2과제_Module1_Workflow",
     task02m2: "02_2과제_Module2_Analytics",
+    task02m3: "02_2과제_Module3_EventHandling",
   };
   const config = {
     ...baseConfig,
@@ -153,6 +154,7 @@ bash ~/mark.sh</code></pre>
     task02second: ["module1.zip", "module2.zip", "module3.zip", "module4.zip"],
     task02m1: ["module1.zip"],
     task02m2: ["module2.zip"],
+    task02m3: ["module3.zip"],
   };
   const moduleFiles = moduleDownloads[activeTaskKey] || [];
   if (moduleFiles.length) {
