@@ -148,6 +148,29 @@ bash ~/mark.sh</code></pre>
   if (activeTaskKey !== "task02first") {
     section.querySelector(".score-submit__download")?.remove();
   }
+  const moduleFiles = activeTaskKey === "task02second"
+    ? ["module1.zip", "module2.zip", "module3.zip", "module4.zip"]
+    : activeTaskKey === "task02m1" ? ["module1.zip"] : [];
+  if (moduleFiles.length) {
+    const downloadPanel = document.createElement("div");
+    downloadPanel.className = "score-submit__download";
+    downloadPanel.setAttribute("role", "group");
+    downloadPanel.setAttribute("aria-label", "2과제 모듈 지급파일 다운로드");
+    const title = document.createElement("strong");
+    title.textContent = "2과제 모듈 지급파일";
+    const actions = document.createElement("div");
+    actions.className = "score-submit__actions";
+    for (const filename of moduleFiles) {
+      const link = document.createElement("a");
+      link.className = "score-submit__secondary";
+      link.href = "downloads/task02-modules/" + filename;
+      link.download = filename;
+      link.textContent = filename + " 다운로드";
+      actions.appendChild(link);
+    }
+    downloadPanel.append(title, actions);
+    section.querySelector(".score-submit__notice").before(downloadPanel);
+  }
   const form = section.querySelector("form");
   const status = section.querySelector(".score-submit__status");
   const frame = section.querySelector("iframe");
