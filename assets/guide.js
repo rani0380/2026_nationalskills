@@ -74,16 +74,25 @@ fetch(encodeURI(selected.file))
   })
   .then((markdown) => {
     document.getElementById("content").innerHTML = renderMarkdown(markdown);
-    if (docKey === "task02first") {
-      mountScoreSubmissionForm();
+    if (["task02first", "task02second"].includes(docKey)) {
+      mountScoreSubmissionForm(docKey);
     }
   })
   .catch((error) => {
     document.getElementById("content").innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
   });
 
-function mountScoreSubmissionForm() {
-  const config = window.SCORE_SUBMISSION_CONFIG || {};
+function mountScoreSubmissionForm(activeTaskKey) {
+  const baseConfig = window.SCORE_SUBMISSION_CONFIG || {};
+  const taskNames = {
+    task02first: "02_1과제_1등",
+    task02second: "02_2과제_1등",
+  };
+  const config = {
+    ...baseConfig,
+    taskKey: activeTaskKey,
+    taskName: taskNames[activeTaskKey],
+  };
   const endpoint = String(config.endpoint || "").trim();
   const configured = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(endpoint);
   const section = document.createElement("section");
@@ -93,7 +102,7 @@ function mountScoreSubmissionForm() {
     <div class="score-submit__heading">
       <p class="eyebrow">Submit result</p>
       <h2>채점 결과 제출</h2>
-      <p>CloudShell에서 <code>mark.sh</code>를 실행한 뒤 전체 출력을 붙여넣으면 Google Sheets로 전송됩니다.</p>
+      <p>채점 스크립트를 실행한 뒤 전체 출력을 붙여넣으면 Google Sheets로 전송됩니다.</p>
     </div>
     <div class="score-submit__download" role="group" aria-label="채점 스크립트 다운로드">
       <strong>채점 스크립트 준비</strong>
@@ -118,7 +127,7 @@ bash ~/mark.sh</code></pre>
         <label class="score-submit__wide">학교/소속 <input name="school" autocomplete="organization" maxlength="100"></label>
       </div>
       <label class="score-submit__wide">채점 결과
-        <textarea name="scoreOutput" rows="18" maxlength="45000" placeholder="CloudShell에서 bash ~/mark.sh 실행 후 출력 전체를 붙여넣으세요." required></textarea>
+        <textarea name="scoreOutput" rows="18" maxlength="45000" placeholder="채점 스크립트 실행 후 출력 전체를 붙여넣으세요." required></textarea>
       </label>
       <label class="score-submit__trap" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off"></label>
       <label class="score-submit__confirm">
@@ -135,6 +144,9 @@ bash ~/mark.sh</code></pre>
   `;
 
   document.getElementById("content").appendChild(section);
+  if (activeTaskKey !== "task02first") {
+    section.querySelector(".score-submit__download")?.remove();
+  }
   const form = section.querySelector("form");
   const status = section.querySelector(".score-submit__status");
   const frame = section.querySelector("iframe");
