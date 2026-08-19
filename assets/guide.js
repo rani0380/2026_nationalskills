@@ -74,7 +74,7 @@ fetch(encodeURI(selected.file))
   })
   .then((markdown) => {
     document.getElementById("content").innerHTML = renderMarkdown(markdown);
-    if (["task02first", "task02second", "task02m1"].includes(docKey)) {
+    if (["task02first", "task02second", "task02m1", "task02m2"].includes(docKey)) {
       mountScoreSubmissionForm(docKey);
     }
   })
@@ -88,6 +88,7 @@ function mountScoreSubmissionForm(activeTaskKey) {
     task02first: "02_1과제_1등",
     task02second: "02_2과제_1등",
     task02m1: "02_2과제_Module1_Workflow",
+    task02m2: "02_2과제_Module2_Analytics",
   };
   const config = {
     ...baseConfig,
@@ -148,9 +149,12 @@ bash ~/mark.sh</code></pre>
   if (activeTaskKey !== "task02first") {
     section.querySelector(".score-submit__download")?.remove();
   }
-  const moduleFiles = activeTaskKey === "task02second"
-    ? ["module1.zip", "module2.zip", "module3.zip", "module4.zip"]
-    : activeTaskKey === "task02m1" ? ["module1.zip"] : [];
+  const moduleDownloads = {
+    task02second: ["module1.zip", "module2.zip", "module3.zip", "module4.zip"],
+    task02m1: ["module1.zip"],
+    task02m2: ["module2.zip"],
+  };
+  const moduleFiles = moduleDownloads[activeTaskKey] || [];
   if (moduleFiles.length) {
     const downloadPanel = document.createElement("div");
     downloadPanel.className = "score-submit__download";
