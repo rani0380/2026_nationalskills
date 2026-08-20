@@ -34,6 +34,13 @@ if (heroActions && !heroActions.querySelector('[href="grader.html"]')) {
   graderLink.textContent = '모의 채점실';
   heroActions.appendChild(graderLink);
 }
+if (heroActions && !heroActions.querySelector('[href="challenge2-practice.html"]')) {
+  const challengeLink = document.createElement('a');
+  challengeLink.className = 'btn alt';
+  challengeLink.href = 'challenge2-practice.html';
+  challengeLink.textContent = '제2과제 최종 모의대회';
+  heroActions.appendChild(challengeLink);
+}
 const flowSection = document.createElement('section');
 flowSection.className = 'learning-flow';
 flowSection.innerHTML = `
