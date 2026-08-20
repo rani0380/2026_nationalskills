@@ -1,0 +1,15 @@
+[Unit]
+Description=Practice VPC Lattice Inventory Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/practice-lattice-service
+ExecStart=/opt/practice-lattice-service/venv/bin/python /opt/practice-lattice-service/service.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
