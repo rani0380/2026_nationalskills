@@ -1,0 +1,25 @@
+{
+  "practice-orders": [
+    {"PutRequest":{"Item":{"orderId":{"S":"O-2001"},"customerId":{"S":"C101"},"createdAt":{"S":"2026-08-01T09:00:00Z"},"status":{"S":"PAID"},"total":{"N":"42000"}}}},
+    {"PutRequest":{"Item":{"orderId":{"S":"O-2002"},"customerId":{"S":"C101"},"createdAt":{"S":"2026-08-02T09:00:00Z"},"status":{"S":"SHIPPED"},"total":{"N":"18000"}}}},
+    {"PutRequest":{"Item":{"orderId":{"S":"O-2003"},"customerId":{"S":"C102"},"createdAt":{"S":"2026-08-03T10:00:00Z"},"status":{"S":"PAID"},"total":{"N":"35000"}}}},
+    {"PutRequest":{"Item":{"orderId":{"S":"O-2004"},"customerId":{"S":"C103"},"createdAt":{"S":"2026-08-04T11:00:00Z"},"status":{"S":"PENDING"},"total":{"N":"27000"}}}},
+    {"PutRequest":{"Item":{"orderId":{"S":"O-2005"},"customerId":{"S":"C104"},"createdAt":{"S":"2026-08-05T12:00:00Z"},"status":{"S":"PAID"},"total":{"N":"51000"}}}},
+    {"PutRequest":{"Item":{"orderId":{"S":"O-2006"},"customerId":{"S":"C102"},"createdAt":{"S":"2026-08-06T13:00:00Z"},"status":{"S":"SHIPPED"},"total":{"N":"12000"}}}},
+    {"PutRequest":{"Item":{"orderId":{"S":"O-2007"},"customerId":{"S":"C105"},"createdAt":{"S":"2026-08-07T14:00:00Z"},"status":{"S":"PENDING"},"total":{"N":"66000"}}}},
+    {"PutRequest":{"Item":{"orderId":{"S":"O-2008"},"customerId":{"S":"C106"},"createdAt":{"S":"2026-08-08T15:00:00Z"},"status":{"S":"PAID"},"total":{"N":"23000"}}}}
+  ],
+  "practice-products": [
+    {"PutRequest":{"Item":{"productId":{"S":"P-100"},"warehouseId":{"S":"WH-A"},"stock":{"N":"3"},"name":{"S":"Keyboard"}}}},
+    {"PutRequest":{"Item":{"productId":{"S":"P-101"},"warehouseId":{"S":"WH-A"},"stock":{"N":"10"},"name":{"S":"Mouse"}}}},
+    {"PutRequest":{"Item":{"productId":{"S":"P-102"},"warehouseId":{"S":"WH-A"},"stock":{"N":"25"},"name":{"S":"Monitor"}}}},
+    {"PutRequest":{"Item":{"productId":{"S":"P-103"},"warehouseId":{"S":"WH-B"},"stock":{"N":"4"},"name":{"S":"Headset"}}}},
+    {"PutRequest":{"Item":{"productId":{"S":"P-104"},"warehouseId":{"S":"WH-B"},"stock":{"N":"16"},"name":{"S":"Webcam"}}}},
+    {"PutRequest":{"Item":{"productId":{"S":"P-105"},"warehouseId":{"S":"WH-C"},"stock":{"N":"8"},"name":{"S":"Speaker"}}}}
+  ],
+  "practice-sessions": [
+    {"PutRequest":{"Item":{"sessionId":{"S":"S-001"},"customerId":{"S":"C101"},"expiresAt":{"N":"1798761600"}}}},
+    {"PutRequest":{"Item":{"sessionId":{"S":"S-002"},"customerId":{"S":"C102"},"expiresAt":{"N":"1798848000"}}}},
+    {"PutRequest":{"Item":{"sessionId":{"S":"S-003"},"customerId":{"S":"C103"},"expiresAt":{"N":"1798934400"}}}}
+  ]
+}
