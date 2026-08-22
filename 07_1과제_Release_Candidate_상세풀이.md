@@ -189,6 +189,132 @@ Ready/Available가 모두 2 이상이어야 합니다. Pod Identity Association�
 - ALB 형식 JSON 응답
 - DynamoDB 최소 권한
 
+### 8.1 함수 생성과 보안 설정
+
+Lambda 콘솔에서 Author from scratch를 선택합니다.
+
+| 항목 | 값 |
+|---|---|
+| Function name | unicorn-get-booking-func |
+| Runtime | Python 3.x |
+| Architecture | x86_64 |
+| Environment variable | TABLE_NAME=unicorn-concert-db |
+| Environment encryption | alias/unicorn-kms-platform |
+| Log group | /unicorn/lambda/get-booking |
+
+실행 역할에는 CloudWatch Logs 기록 권한과 unicorn-concert-db의 dynamodb:GetItem만 허용합니다. 별도 조회 방식을 추가하지 않는다면 Scan이나 전체 테이블 wildcard 권한은 필요하지 않습니다.
+
+### 8.2 lambda_function.py 전체 코드
+
+```python
+import json
+import os
+
+import boto3
+
+
+TABLE_NAME = os.environ["TABLE_NAME"]
+table = boto3.resource("dynamodb").Table(TABLE_NAME)
+
+STATUS_TEXT = {
+    200: "OK",
+    400: "Bad Request",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    500: "Internal Server Error",
+}
+
+
+def alb_response(status_code, payload):
+    return {
+        "statusCode": status_code,
+        "statusDescription": f"{status_code} {STATUS_TEXT[status_code]}",
+        "isBase64Encoded": False,
+        "headers": {
+            "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": json.dumps(payload, ensure_ascii=False),
+    }
+
+
+def lambda_handler(event, context):
+    method = event.get("httpMethod", "GET")
+    params = event.get("queryStringParameters") or {}
+
+    if method != "GET":
+        return alb_response(405, {"message": "Method Not Allowed"})
+
+    booking_id = params.get("booking_id")
+    if not booking_id:
+        return alb_response(400, {"message": "booking_id is required"})
+
+    try:
+        result = table.get_item(
+            Key={"booking_id": booking_id},
+            ConsistentRead=True,
+        )
+    except Exception:
+        print("DynamoDB GetItem failed", flush=True)
+        return alb_response(500, {"message": "internal server error"})
+
+    item = result.get("Item")
+    if item is None:
+        return alb_response(404, {"message": "booking not found"})
+
+    # 선택 파라미터가 오면 저장된 값과 함께 일치해야 합니다.
+    for field in ("email", "concert_name"):
+        expected = params.get(field)
+        if expected is not None and item.get(field) != expected:
+            return alb_response(404, {"message": "booking not found"})
+
+    return alb_response(200, item)
+```
+
+boto3는 Lambda Python 런타임에 포함되므로 별도 Layer나 dependency zip이 필요하지 않습니다. Handler는 lambda_function.lambda_handler로 둡니다.
+
+### 8.3 IAM 최소 권한
+
+ACCOUNT_ID는 실제 계정 ID로 바꿉니다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadBooking",
+      "Effect": "Allow",
+      "Action": "dynamodb:GetItem",
+      "Resource": "arn:aws:dynamodb:ap-northeast-2:ACCOUNT_ID:table/unicorn-concert-db"
+    }
+  ]
+}
+```
+
+CloudWatch Logs는 AWSLambdaBasicExecutionRole을 사용하거나 /unicorn/lambda/get-booking에 한정한 logs:CreateLogStream, logs:PutLogEvents 권한을 직접 부여합니다. 환경변수 복호화를 위해 실행 역할에 Platform CMK의 kms:Decrypt도 필요합니다.
+
+### 8.4 콘솔 테스트 이벤트
+
+```json
+{
+  "httpMethod": "GET",
+  "path": "/v1/book",
+  "queryStringParameters": {
+    "booking_id": "POST에서 받은 ID"
+  }
+}
+```
+
+정상 응답은 statusCode 200이고 body는 JSON 문자열이어야 합니다. booking_id가 없는 이벤트도 실행해 400을 확인합니다.
+
+### 8.5 ALB Lambda Target Group 연결
+
+1. Target type을 Lambda function으로 선택해 Lambda용 Target Group을 만듭니다.
+2. unicorn-get-booking-func를 Target으로 등록합니다.
+3. Lambda Resource-based policy에 elasticloadbalancing.amazonaws.com의 InvokeFunction을 허용합니다.
+4. ALB Listener의 GET + /v1/book 규칙을 Lambda Target Group으로 전달합니다.
+5. POST /v1/book과 GET /health는 기존 unicorn-tg로 전달합니다.
+
+CloudFront에서 query string 전달이 꺼져 있으면 Lambda에 booking_id가 도착하지 않아 400이 발생합니다. /v1/book* behavior의 Origin request policy에서 모든 query string 또는 booking_id, email, concert_name을 전달하세요.
 ## 9. ALB와 CloudFront - 7점
 
 ### Internal ALB
