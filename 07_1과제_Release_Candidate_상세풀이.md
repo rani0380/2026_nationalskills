@@ -98,20 +98,185 @@ done
 
 ## 6. ECR - 1점
 
-Repository unicorn-concert-app:
+Repository 이름은 unicorn-concert-app입니다. 채점은 단순히 이미지가 보이는지만 확인하지 않고 Repository 설정, 두 tag, v1.0.0 스캔 이력, 취약점 개수를 함께 검사합니다.
 
-- Scan on push true
-- KMS, Data CMK
-- IMMUTABLE_WITH_EXCLUSION
-- latest만 Mutable 예외
-- v1.0.0과 latest push
-- v1.0.0 scan 이력 존재
-- LOW를 포함한 어떤 취약점도 없어야 함
+### 6.1 정답 설정표
+
+| 항목 | 값 |
+|---|---|
+| Repository | unicorn-concert-app |
+| Scan on push | true |
+| Encryption | KMS |
+| KMS key | alias/unicorn-kms-data |
+| Tag mutability | IMMUTABLE_WITH_EXCLUSION |
+| Mutable exclusion | WILDCARD / latest |
+| 필수 tag | v1.0.0, latest |
+| v1.0.0 scan | 완료 이력 존재 |
+| 허용 취약점 | CRITICAL/HIGH/MEDIUM/LOW/INFORMATIONAL 모두 0 |
+
+IMMUTABLE_WITH_EXCLUSION은 기본적으로 모든 tag 덮어쓰기를 막되 exclusion에 일치하는 latest만 다시 push할 수 있게 합니다. v1.0.0은 최초 한 번만 정확히 push하세요.
+
+### 6.2 콘솔에서 Repository 생성
+
+1. AWS Console에서 Elastic Container Registry → Private registry → Repositories → Create repository로 이동합니다.
+2. Repository name에 unicorn-concert-app을 입력합니다.
+3. Image tag mutability는 Immutable을 선택합니다.
+4. Exclusion filter를 추가하고 Filter type은 Wildcard, Filter는 latest로 지정합니다.
+5. Scan on push를 활성화합니다.
+6. Encryption configuration은 KMS를 선택합니다.
+7. KMS key는 alias/unicorn-kms-data를 선택합니다.
+8. 생성 후 Repository 상세의 Mutability가 IMMUTABLE_WITH_EXCLUSION인지 다시 확인합니다.
+
+콘솔에 exclusion UI가 보이지 않거나 설정 결과가 다르면 아래 CLI 방식이 더 확실합니다.
+
+### 6.3 CLI로 Repository 생성
+
+아직 Repository가 없을 때:
 
 ```bash
-aws ecr describe-image-scan-findings   --repository-name unicorn-concert-app --image-id imageTag=v1.0.0
+aws ecr create-repository   --repository-name unicorn-concert-app   --region ap-northeast-2   --image-scanning-configuration scanOnPush=true   --encryption-configuration encryptionType=KMS,kmsKey=alias/unicorn-kms-data   --image-tag-mutability IMMUTABLE_WITH_EXCLUSION   --image-tag-mutability-exclusion-filters     filterType=WILDCARD,filter=latest
 ```
 
+이미 Repository를 만들었다면 tag 정책을 다음처럼 교정합니다.
+
+```bash
+aws ecr put-image-tag-mutability   --repository-name unicorn-concert-app   --image-tag-mutability IMMUTABLE_WITH_EXCLUSION   --image-tag-mutability-exclusion-filters     filterType=WILDCARD,filter=latest
+```
+
+Scan on push가 false라면 다음 명령으로 켭니다.
+
+```bash
+aws ecr put-image-scanning-configuration   --repository-name unicorn-concert-app   --image-scanning-configuration scanOnPush=true
+```
+
+KMS 암호화 방식과 KMS key는 Repository 생성 후 변경할 수 없으므로 잘못 만들었다면 이미지가 없는 초기 단계에서 Repository를 다시 만드는 것이 안전합니다.
+
+### 6.4 취약점 0건용 Dockerfile
+
+지급된 book은 x86-64 정적 링크 Go 바이너리이므로 OS 패키지가 없는 scratch image로 실행할 수 있습니다. 이 방식은 스캔 대상 OS 패키지를 포함하지 않아 취약점 0건 조건을 맞추기 가장 쉽습니다.
+
+book 파일과 같은 폴더에 Dockerfile을 만듭니다.
+
+```dockerfile
+FROM scratch
+COPY book /book
+EXPOSE 8080
+ENTRYPOINT ["/book"]
+```
+
+주의:
+
+- 지급된 book 바이너리는 수정하지 않습니다.
+- Docker build context에 book이 있어야 합니다.
+- scratch에는 shell, curl, chmod가 없습니다. Dockerfile에서 RUN chmod를 사용할 수 없습니다.
+- Windows에서 파일을 옮겨 실행 권한 문제가 생기면 Linux/CloudShell에서 chmod +x book을 먼저 수행합니다.
+- Kubernetes probe는 exec가 아니라 HTTP GET /health를 사용합니다.
+
+### 6.5 로그인, Build, Tag, Push
+
+지급파일 폴더에서 실행합니다.
+
+```bash
+cd '<지급파일의 book과 Dockerfile이 있는 폴더>'
+
+export AWS_REGION=ap-northeast-2
+export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export ECR_URI=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/unicorn-concert-app
+
+aws ecr get-login-password --region $AWS_REGION   | docker login --username AWS --password-stdin     $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+docker build --platform linux/amd64 -t unicorn-concert-app:v1.0.0 .
+
+docker tag unicorn-concert-app:v1.0.0 $ECR_URI:v1.0.0
+docker tag unicorn-concert-app:v1.0.0 $ECR_URI:latest
+
+docker push $ECR_URI:v1.0.0
+docker push $ECR_URI:latest
+```
+
+반드시 v1.0.0을 최초 push할 때 올바른 image를 사용합니다. v1.0.0을 다시 push하면 ImageTagAlreadyExistsException이 발생하는 것이 정상입니다. latest는 exclusion 대상이므로 다시 push할 수 있습니다.
+
+두 tag를 같은 build 결과에 붙였는지 확인합니다.
+
+```bash
+aws ecr describe-images   --repository-name unicorn-concert-app   --image-ids imageTag=v1.0.0 imageTag=latest   --query 'imageDetails[].[imageDigest,imageTags]'   --output table
+```
+
+두 tag의 digest가 같으면 가장 단순하고 안전합니다.
+
+### 6.6 Scan 실행과 완료 대기
+
+Scan on push가 켜져 있으면 v1.0.0 push 직후 자동 스캔됩니다. 먼저 상태를 확인합니다.
+
+```bash
+aws ecr describe-image-scan-findings   --repository-name unicorn-concert-app   --image-id imageTag=v1.0.0   --query '[imageScanStatus.status,imageScanStatus.description]'   --output text
+```
+
+아직 스캔 이력이 없을 때만 수동 스캔을 시작합니다.
+
+```bash
+aws ecr start-image-scan   --repository-name unicorn-concert-app   --image-id imageTag=v1.0.0
+```
+
+같은 이미지는 보통 24시간에 한 번만 수동 스캔할 수 있으므로 scan on push가 이미 실행됐다면 start-image-scan을 반복하지 않습니다. 상태가 IN_PROGRESS이면 잠시 기다렸다가 describe-image-scan-findings를 다시 실행합니다.
+
+### 6.7 취약점 0건 판정
+
+전체 결과:
+
+```bash
+aws ecr describe-image-scan-findings   --repository-name unicorn-concert-app   --image-id imageTag=v1.0.0
+```
+
+채점에 필요한 핵심 출력만 확인:
+
+```bash
+aws ecr describe-image-scan-findings   --repository-name unicorn-concert-app   --image-id imageTag=v1.0.0   --query '[imageScanStatus.status,imageScanFindings.findingSeverityCounts]'   --output json
+```
+
+정상 예시:
+
+```json
+[
+  "COMPLETE",
+  {}
+]
+```
+
+COMPLETE와 빈 객체가 함께 나와야 합니다. findingSeverityCounts가 비어 있어도 status가 없거나 scan 결과 자체가 없으면 스캔 미실행으로 오답입니다. LOW: 1처럼 LOW 하나만 있어도 이 과제에서는 오답입니다.
+
+### 6.8 mark.sh와 같은 최종 검증
+
+```bash
+aws ecr describe-repositories   --repository-names unicorn-concert-app   --query 'repositories[0].{Scan:imageScanningConfiguration.scanOnPush,Mutability:imageTagMutability,Enc:encryptionConfiguration.encryptionType}'   --output json
+
+aws ecr describe-images   --repository-name unicorn-concert-app   --query 'sort(imageDetails[].imageTags[])'   --output json | jq -r '@tsv'
+
+aws ecr describe-image-scan-findings   --repository-name unicorn-concert-app   --image-id imageTag=v1.0.0   --query 'imageScanFindings.findingSeverityCounts'   --output json
+```
+
+기대 결과:
+
+- Scan: true
+- Mutability: IMMUTABLE_WITH_EXCLUSION
+- Enc: KMS
+- tag 목록에 latest와 v1.0.0 존재
+- findingSeverityCounts는 빈 객체
+- 스캔 이력은 별도 status 조회에서 COMPLETE
+
+### 6.9 자주 발생하는 오류
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| ImageTagAlreadyExistsException | v1.0.0 재 push | 새 Repository라면 최초 push만 수행; latest만 갱신 |
+| latest도 덮어쓰기 실패 | exclusion filter 누락/오타 | WILDCARD, latest로 put-image-tag-mutability 실행 |
+| scan 결과가 없음 | scan on push 전에 이미지를 올림 | v1.0.0 수동 scan 1회 실행 |
+| scan status IN_PROGRESS | 스캔 진행 중 | 완료까지 대기 후 다시 조회 |
+| LOW 이상 finding 존재 | OS package가 든 base image 사용 | 정적 book을 scratch image로 다시 build |
+| KMS가 AES256으로 출력 | 기본 암호화로 생성 | KMS Repository로 다시 생성 |
+| no basic auth credentials | ECR 로그인 만료/리전 오류 | get-login-password를 서울 리전으로 재실행 |
+| exec format error | 다른 CPU architecture로 build | --platform linux/amd64로 다시 build |
+| Pod에서 /bin/sh 오류 | scratch에는 shell 없음 | exec probe 대신 HTTP /health 사용 |
 ## 7. EKS - 4.5점
 
 Cluster unicorn-eks-cluster, Kubernetes 1.35:
