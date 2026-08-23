@@ -30,6 +30,17 @@ aws configure set region $AWS_REGION
 
 채점은 Private Subnet의 CloudShell VPC Environment unicorn-mark에서 진행됩니다. 여기서 source kubectl-connect unicorn-eks-cluster가 성공해야 합니다.
 
+
+### 최신 오류 수정 공지 적용 기준
+
+- 과제지는 오류 수정으로 내용이 변경되었으므로 이전 RC 문구보다 현재 과제지와 v6 채점 스크립트를 우선합니다.
+- 채점은 `unicorn-mark` CloudShell VPC Environment에서 막힘없이 실행되어야 합니다. AWS CLI, `kubectl`, DNS, HTTPS Endpoint, 보안 그룹과 실행 Role 권한을 미리 검증합니다.
+- 추가과제인 Stream DynamoDB의 시간값을 제외한 모든 Timezone은 `Asia/Seoul`(KST)을 사용합니다.
+- 채점 6-1의 EKS Authentication mode 확인은 제외되었습니다. Authentication mode 자체를 특정 값으로 맞추는 데 시간을 쓰지 말고 Private Endpoint, Logging, Encryption, Node 상태를 우선 확인합니다.
+- Stream의 `created_at`은 String 또는 Epoch Number 모두 허용됩니다. 과제지 필수 필드만 빠짐없이 들어가면 추가 필드도 사용할 수 있습니다.
+- `source-db`의 `ticket_id`, `price`, `amount`, `created_at`은 최초 AWS CLI PutItem에 모두 포함해야 하며 별도 Lambda가 보충하면 안 됩니다.
+- 대회 종료 전 Stream 데이터 클렌징은 필수가 아닙니다. PutItem 호출 60초 후 해당 Key로 GetItem을 실행했을 때 결과가 5~10초 안에 표시되면 됩니다.
+
 ## 2. Networking - 3점
 
 ### 2.1 전체 구성표
@@ -291,6 +302,29 @@ aws dynamodb describe-time-to-live --table-name source-db \
   --query TimeToLiveDescription
 ```
 
+
+#### 5.1.7 수정 공지 기준 채점 호출
+
+채점용 `--item`에는 최소한 `ticket_id`, `price`, `amount`, `created_at`이 있어야 합니다. 값은 선수가 바꿀 수 있고 `created_at`을 Epoch Number로 바꾸거나 `expires_at` 같은 추가 필드를 넣는 것도 허용됩니다. 다음처럼 Epoch Number를 사용하는 호출도 유효합니다.
+
+```bash
+NOW_EPOCH=$(date +%s)
+EXPIRES_AT=$((NOW_EPOCH + 300))
+
+aws dynamodb put-item --table-name source-db --item "{\
+\"ticket_id\":{\"S\":\"notice-test-001\"},\
+\"price\":{\"N\":\"1500\"},\
+\"amount\":{\"N\":\"2\"},\
+\"created_at\":{\"N\":\"$NOW_EPOCH\"},\
+\"expires_at\":{\"N\":\"$EXPIRES_AT\"}}"
+
+sleep 60
+aws dynamodb get-item --table-name destination-db \
+  --key '{"ticket_id":{"S":"notice-test-001"}}' --consistent-read
+```
+
+GetItem 명령 자체가 5~10초 안에 응답하고 `total_price=3000`을 표시해야 합니다. 시험 종료 전에 source/destination Item을 삭제할 필요는 없습니다. 단, 반복 테스트 시에는 매번 다른 `ticket_id`를 사용해 이전 결과와 혼동하지 않습니다.
+
 ## 6. ECR - 1점
 
 Repository 이름은 unicorn-concert-app입니다. 채점은 단순히 이미지가 보이는지만 확인하지 않고 Repository 설정, 두 tag, v1.0.0 스캔 이력, 취약점 개수를 함께 검사합니다.
@@ -510,7 +544,7 @@ DynamoDB App 권한은 Node Role에 넣지 않고 Pod Identity Role에만 넣습
 4. Endpoint access는 Private only로 설정합니다.
 5. Control Plane Logging 5종을 모두 활성화합니다.
 6. Kubernetes API data encryption에 alias/unicorn-kms-platform을 지정합니다.
-7. Authentication mode는 API 또는 API_AND_CONFIG_MAP을 선택합니다.
+7. Authentication mode는 접근 방식에 맞게 구성합니다. **v6 채점에서는 Authentication mode 값 확인이 제외**되었으므로 이 값 자체는 채점 대상이 아닙니다.
 8. Cluster가 Active가 될 때까지 기다립니다.
 
 VPC의 DNS support와 DNS hostnames가 켜져 있어야 Private Endpoint가 해석됩니다. unicorn-mark SG에서 Cluster SG의 TCP 443 접근도 허용합니다.
