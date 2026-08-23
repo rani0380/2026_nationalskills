@@ -29,8 +29,8 @@ const docs = {
     file: "02_2과제_내일변경_대응센터.md",
   },
   task02second: {
-    title: "2과제 풀이해설서",
-    description: "select/2과제/02_2과제_1등의 Workflow, Analytics, Event Handling, MSK 모듈 풀이와 이론을 정리한 문서입니다.",
+    title: "제2과제 RC 콘솔 + CLI 상세 풀이",
+    description: "최신 Release Candidate의 Workflow, Real-time Data Analytics, MSK를 22.5점 채점 순서대로 구성한 실전 풀이입니다.",
     file: "02_2과제_1등_상세풀이.md",
   },
   task02m1: {
