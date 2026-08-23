@@ -753,13 +753,120 @@ CloudWatch Logs는 AWSLambdaBasicExecutionRole을 사용하거나 /unicorn/lambd
 
 ### 8.5 ALB Lambda Target Group 연결
 
-1. Target type을 Lambda function으로 선택해 Lambda용 Target Group을 만듭니다.
-2. unicorn-get-booking-func를 Target으로 등록합니다.
-3. Lambda Resource-based policy에 elasticloadbalancing.amazonaws.com의 InvokeFunction을 허용합니다.
-4. ALB Listener의 GET + /v1/book 규칙을 Lambda Target Group으로 전달합니다.
-5. POST /v1/book과 GET /health는 기존 unicorn-tg로 전달합니다.
+#### 8.5.1 최종 연결 구조
 
-CloudFront에서 query string 전달이 꺼져 있으면 Lambda에 booking_id가 도착하지 않아 400이 발생합니다. /v1/book* behavior의 Origin request policy에서 모든 query string 또는 booking_id, email, concert_name을 전달하세요.
+| 요청 | ALB Listener 조건 | 전달 대상 |
+|---|---|---|
+| GET /v1/book?booking_id=... | Method GET + Path /v1/book | Lambda Target Group |
+| POST /v1/book | Method POST + Path /v1/book | 기존 unicorn-tg |
+| GET /health | Method GET + Path /health | 기존 unicorn-tg |
+| 나머지 요청 | Default rule | Fixed response 403 |
+
+같은 /v1/book 경로를 사용하므로 Path 조건만 만들면 안 됩니다. 반드시 **HTTP request method와 Path pattern을 함께** 조건으로 지정해야 GET은 Lambda, POST는 EKS App으로 분기됩니다.
+
+#### 8.5.2 콘솔에서 Lambda Target Group 생성
+
+1. EC2 -> Target Groups -> Create target group으로 이동합니다.
+2. Choose a target type에서 **Lambda function**을 선택합니다.
+3. Target group name은 예를 들어 unicorn-lambda-tg로 지정합니다.
+4. Lambda function에서 unicorn-get-booking-func를 선택하고 Target으로 등록합니다.
+5. 콘솔이 Lambda 호출 권한 추가를 요청하면 허용합니다.
+6. Target Group의 Registered targets에 함수가 표시되는지 확인합니다.
+
+Lambda Target Group은 Instance/IP Target Group과 달리 Protocol, Port, VPC를 지정하지 않습니다. 함수 Target 등록 전에 ALB가 함수를 호출할 수 있도록 Lambda Resource-based policy가 필요합니다.
+
+#### 8.5.3 CLI로 생성하고 호출 권한 부여
+
+```bash
+REGION=ap-northeast-2
+FUNC_NAME=unicorn-get-booking-func
+
+FUNC_ARN=$(aws lambda get-function \
+  --function-name "$FUNC_NAME" \
+  --query 'Configuration.FunctionArn' --output text)
+
+LAMBDA_TG_ARN=$(aws elbv2 create-target-group \
+  --name unicorn-lambda-tg \
+  --target-type lambda \
+  --query 'TargetGroups[0].TargetGroupArn' --output text)
+
+aws lambda add-permission \
+  --function-name "$FUNC_NAME" \
+  --statement-id AllowInvokeFromUnicornALB \
+  --action lambda:InvokeFunction \
+  --principal elasticloadbalancing.amazonaws.com \
+  --source-arn "$LAMBDA_TG_ARN"
+
+aws elbv2 register-targets \
+  --target-group-arn "$LAMBDA_TG_ARN" \
+  --targets Id="$FUNC_ARN"
+```
+
+add-permission의 source-arn은 ALB ARN이 아니라 **Lambda Target Group ARN**입니다. 같은 Statement ID가 이미 있으면 ResourceConflictException이 발생하므로 기존 정책을 먼저 확인합니다.
+
+```bash
+aws lambda get-policy \
+  --function-name unicorn-get-booking-func \
+  --query Policy --output text
+```
+
+정책 안에 Principal elasticloadbalancing.amazonaws.com, Action lambda:InvokeFunction, SourceArn unicorn-lambda-tg의 ARN이 있어야 합니다.
+
+#### 8.5.4 ALB Listener 규칙
+
+EC2 -> Load Balancers -> unicorn-alb -> Listeners and rules -> HTTP:80 -> Manage rules에서 다음 순서로 만듭니다.
+
+| Priority 예시 | 조건 | Action |
+|---:|---|---|
+| 10 | Method GET, Path /v1/book | Forward to unicorn-lambda-tg |
+| 20 | Method POST, Path /v1/book | Forward to unicorn-tg |
+| 30 | Method GET, Path /health | Forward to unicorn-tg |
+| Default | 조건 없음 | Fixed response 403 |
+
+우선순위 숫자는 기존 규칙과 겹치지 않으면 달라도 됩니다. 규칙 하나 안에서 Method와 Path 조건은 AND로 평가되어야 합니다.
+
+```bash
+aws elbv2 create-rule \
+  --listener-arn "$LISTENER_ARN" \
+  --priority 10 \
+  --conditions \
+    'Field=http-request-method,HttpRequestMethodConfig={Values=[GET]}' \
+    'Field=path-pattern,PathPatternConfig={Values=[/v1/book]}' \
+  --actions Type=forward,TargetGroupArn="$LAMBDA_TG_ARN"
+```
+
+#### 8.5.5 CloudFront Query String 전달
+
+CloudFront에서 Query String 전달이 꺼져 있으면 Lambda event의 queryStringParameters에 booking_id가 들어오지 않아 400이 발생합니다.
+
+CloudFront -> Distribution -> Behaviors -> /v1/book* -> Edit에서 다음을 확인합니다.
+
+| 항목 | 설정 |
+|---|---|
+| Origin | Internal ALB의 VPC Origin |
+| Allowed HTTP methods | GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE |
+| Cache policy | API 응답은 CachingDisabled 권장 |
+| Origin request policy | 사용자 정의 Policy 연결 |
+| Query strings | All 또는 Allow list |
+| Allow list 사용 시 | booking_id, email, concert_name |
+
+Origin request policy는 Query String을 Origin으로 전달하지만 반드시 Cache Key에 포함시키는 것은 아닙니다. GET 조회 결과를 캐싱한다면 사용자별 응답 혼합을 막기 위해 booking_id를 Cache Key에 포함하거나, 시험에서는 /v1/book*에 CachingDisabled를 적용하는 편이 안전합니다.
+
+#### 8.5.6 연결 검증
+
+```bash
+CF_DOMAIN=배포도메인.cloudfront.net
+
+curl -i "https://${CF_DOMAIN}/v1/book?booking_id=존재하는ID"
+curl -i "https://${CF_DOMAIN}/v1/book"
+curl -i -X POST "https://${CF_DOMAIN}/v1/book" \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"test","concert_name":"unicorn"}'
+curl -i "https://${CF_DOMAIN}/health"
+```
+
+첫 번째 요청은 Lambda 조회 결과, 두 번째 요청은 booking_id 누락에 따른 400, POST와 health는 EKS App 응답이어야 합니다. GET 요청이 EKS로 가거나 POST가 Lambda로 가면 Listener 규칙에 Method 조건이 빠졌는지 확인합니다. Query String을 보냈는데도 400이면 CloudFront Origin request policy와 Lambda 로그의 queryStringParameters를 확인합니다.
+
 ## 9. ALB와 CloudFront - 7점
 
 ### Internal ALB
