@@ -33,6 +33,11 @@ const docs = {
     description: "최신 Release Candidate의 Workflow, Real-time Data Analytics, MSK를 22.5점 채점 순서대로 구성한 실전 풀이입니다.",
     file: "02_2과제_1등_상세풀이.md",
   },
+  task02extra: {
+    title: "제2과제 추가 예상문제",
+    description: "추가 출제 가능성이 높은 Cloud Operations Automation을 문제지·콘솔·CLI·예상 채점표 형식으로 구성한 비공식 대비 자료입니다.",
+    file: "02_2과제_추가예상문제_운영자동화.md",
+  },
   task02m1: {
     title: "02_2 Module 1 Workflow 설명서",
     description: "S3, Lambda, DynamoDB, Step Functions로 학생 성적 처리 워크플로우를 구성하는 모듈별 설명서입니다.",
