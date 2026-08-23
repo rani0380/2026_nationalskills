@@ -136,116 +136,160 @@ done
 | Encryption | App CMK |
 | PITR / 삭제 방지 | ENABLED / true |
 
-### 5.1 Stream DynamoDB TTL·필드 구성 보충사항
+### 5.1 DynamoDB Stream 추가과제 완성 풀이
 
-> **적용 범위 주의:** 현재 첨부된 07_1 Release Candidate 채점표는 unicorn-concert-db의 created_at을 String(S)으로 직접 조회하며 source-db나 TTL을 검사하지 않습니다. 따라서 기존 RC 채점에 응시한다면 앞의 5번 표대로 created_at을 ISO 8601 String으로 저장합니다. 아래 내용은 별도로 전달된 **Stream DynamoDB / source-db 추가 공지**가 적용되는 버전에서 사용합니다.
+이 항목은 `unicorn-concert-db`와 별개의 추가과제입니다.
 
-#### created_at과 TTL 데이터 타입
-
-DynamoDB TTL은 TTL 대상으로 지정한 Attribute에 Unix Epoch **초 단위 Number**가 있어야 동작합니다. 따라서 Stream 과제에서 created_at을 Number로 사용하도록 허용한 경우 Epoch Time을 저장해도 됩니다.
-
-| 사용 목적 | 권장 Attribute | DynamoDB 타입 | 예시 |
-|---|---|---|---|
-| 생성 시각 기록 | created_at | Number 또는 공지에서 지정한 타입 | 1780182059 |
-| TTL 만료 시각 | expires_at | Number | 1780268459 |
-| 사람이 읽는 시각 | created_at_iso 추가 가능 | String | 2026-05-31T20:00:59+09:00 |
-
-TTL Attribute 값은 단순 생성 시각이 아니라 **만료되어야 하는 미래 시각의 Epoch 초**여야 합니다. created_at을 TTL Attribute로 직접 지정하고 현재 생성 시각을 넣으면 만료 대상으로 바로 판정될 수 있으므로, 특별한 요구가 없다면 expires_at을 별도로 두는 편이 안전합니다.
-
-Epoch 값 생성 예시:
-
-```bash
-CREATED_AT=$(date +%s)
-EXPIRES_AT=$((CREATED_AT + 86400))  # 24시간 후
-echo "$CREATED_AT $EXPIRES_AT"
+```text
+CLI PutItem -> source-db -> DynamoDB Stream
+            -> ticket-processor Lambda -> destination-db
 ```
 
-TTL 활성화:
+#### 5.1.1 정답 설정표
+
+| 항목 | 값 |
+|---|---|
+| Source / Destination | source-db / destination-db |
+| 두 테이블 PK | ticket_id String |
+| Billing | PAY_PER_REQUEST |
+| Stream | NEW_IMAGE |
+| Lambda | ticket-processor, Container image |
+| 계산식 | total_price = price * amount |
+| 처리 | PutItem 후 60초 이내 결과 저장 |
+| TTL | source-db 입력 시각 + 300초 |
+
+`created_at`은 공지에 따라 String 또는 Epoch Number로 사용할 수 있습니다. TTL Attribute는 Unix Epoch **초 단위 Number**여야 하므로 `expires_at = 현재 Epoch + 300`을 추가하고 TTL Attribute로 지정합니다. DynamoDB의 실제 삭제는 비동기지만 만료 기준값은 정확히 300초 후여야 합니다.
+
+#### 5.1.2 콘솔 풀이
+
+1. DynamoDB에서 `source-db`, `destination-db`를 만들고 Partition key를 `ticket_id`(String), Capacity mode를 On-demand로 지정합니다.
+2. `source-db` -> Exports and streams에서 Stream을 켜고 New image를 선택합니다.
+3. Additional settings -> Time to Live에서 `expires_at`을 활성화합니다.
+4. ECR에 `ticket-processor` Repository를 만들고 아래 이미지를 Push합니다.
+5. Lambda를 Container image 방식, 이름 `ticket-processor`로 만들고 `DESTINATION_TABLE=destination-db`를 설정합니다.
+6. Add trigger -> DynamoDB에서 `source-db` Stream, Starting position LATEST, Enabled를 선택합니다.
+7. 실행 Role에는 Stream 읽기, `destination-db` PutItem, 로그 기록만 허용합니다.
+
+#### 5.1.3 CLI로 테이블·Stream·TTL 생성
 
 ```bash
-aws dynamodb update-time-to-live \
-  --table-name source-db \
-  --time-to-live-specification \
-  "Enabled=true,AttributeName=expires_at"
+aws configure set region ap-northeast-2
 
-aws dynamodb describe-time-to-live \
-  --table-name source-db \
+for TABLE in source-db destination-db; do
+  aws dynamodb create-table \
+    --table-name "$TABLE" \
+    --attribute-definitions AttributeName=ticket_id,AttributeType=S \
+    --key-schema AttributeName=ticket_id,KeyType=HASH \
+    --billing-mode PAY_PER_REQUEST
+  aws dynamodb wait table-exists --table-name "$TABLE"
+done
+
+aws dynamodb update-table --table-name source-db \
+  --stream-specification StreamEnabled=true,StreamViewType=NEW_IMAGE
+
+aws dynamodb update-time-to-live --table-name source-db \
+  --time-to-live-specification Enabled=true,AttributeName=expires_at
+
+STREAM_ARN=$(aws dynamodb describe-table --table-name source-db \
+  --query 'Table.LatestStreamArn' --output text)
+```
+
+#### 5.1.4 Lambda 컨테이너 코드
+
+`lambda_function.py`:
+
+```python
+import os
+import boto3
+from boto3.dynamodb.types import TypeDeserializer
+
+destination = boto3.resource("dynamodb").Table(
+    os.environ.get("DESTINATION_TABLE", "destination-db")
+)
+deserialize = TypeDeserializer().deserialize
+
+def lambda_handler(event, context):
+    processed = 0
+    for record in event.get("Records", []):
+        if record.get("eventName") not in ("INSERT", "MODIFY"):
+            continue
+        image = record.get("dynamodb", {}).get("NewImage", {})
+        item = {key: deserialize(value) for key, value in image.items()}
+        item["total_price"] = item["price"] * item["amount"]
+        item.pop("expires_at", None)
+        destination.put_item(Item=item)
+        processed += 1
+    return {"processed": processed}
+```
+
+`Dockerfile`:
+
+```dockerfile
+FROM public.ecr.aws/lambda/python:3.12
+COPY lambda_function.py ${LAMBDA_TASK_ROOT}/
+CMD ["lambda_function.lambda_handler"]
+```
+
+#### 5.1.5 Build·Push·Lambda 연결
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION=ap-northeast-2
+aws ecr create-repository --repository-name ticket-processor \
+  --image-scanning-configuration scanOnPush=true
+aws ecr get-login-password --region "$REGION" | docker login \
+  --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
+
+docker build --platform linux/amd64 -t ticket-processor:latest .
+docker tag ticket-processor:latest \
+  "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/ticket-processor:latest"
+docker push "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/ticket-processor:latest"
+IMAGE_URI="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/ticket-processor:latest"
+
+aws lambda create-function --function-name ticket-processor \
+  --package-type Image --code ImageUri="$IMAGE_URI" \
+  --role "arn:aws:iam::$ACCOUNT_ID:role/ticket-processor-role" \
+  --architectures x86_64 --timeout 30 --memory-size 256 \
+  --environment 'Variables={DESTINATION_TABLE=destination-db}'
+aws lambda wait function-active-v2 --function-name ticket-processor
+
+aws lambda create-event-source-mapping --function-name ticket-processor \
+  --event-source-arn "$STREAM_ARN" --starting-position LATEST \
+  --batch-size 10 --maximum-retry-attempts 2 \
+  --bisect-batch-on-function-error
+```
+
+Role Trust Principal은 `lambda.amazonaws.com`입니다. 정책에는 Logs, `destination-db`의 `dynamodb:PutItem`, 해당 Stream의 DescribeStream/GetRecords/GetShardIterator/ListStreams만 허용합니다.
+
+#### 5.1.6 PutItem과 60초 검증
+
+필수 필드는 최초 PutItem에 모두 포함하고 Lambda가 `created_at`을 추가하게 만들지 않습니다.
+
+```bash
+TICKET_ID=abcd1111
+CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EXPIRES_AT=$(($(date +%s) + 300))
+
+aws dynamodb put-item --table-name source-db --item "{\
+\"ticket_id\":{\"S\":\"$TICKET_ID\"},\
+\"price\":{\"N\":\"1000\"},\
+\"amount\":{\"N\":\"3\"},\
+\"created_at\":{\"S\":\"$CREATED_AT\"},\
+\"expires_at\":{\"N\":\"$EXPIRES_AT\"}}"
+
+aws dynamodb get-item --table-name destination-db \
+  --key '{"ticket_id":{"S":"abcd1111"}}' --consistent-read
+```
+
+기대 결과는 `price=1000`, `amount=3`, `total_price=3000`입니다. 60초 안에 없으면 다음을 확인합니다.
+
+```bash
+aws lambda list-event-source-mappings --function-name ticket-processor \
+  --query 'EventSourceMappings[*].[State,LastProcessingResult]'
+aws logs tail /aws/lambda/ticket-processor --since 10m
+aws dynamodb describe-time-to-live --table-name source-db \
   --query TimeToLiveDescription
 ```
-
-기대 상태는 ENABLED 또는 활성화 진행 중인 ENABLING입니다.
-
-#### 필수 필드와 추가 필드
-
-과제지에 명시된 필드는 모두 반드시 포함합니다. 구현이나 TTL 처리를 위해 expires_at, created_at_iso 같은 필드를 추가하는 것은 가능합니다.
-
-| 구분 | 처리 기준 |
-|---|---|
-| 과제지 필수 필드 | 누락 금지 |
-| created_at | String 고정 요구가 없으면 Number Epoch 사용 가능 |
-| expires_at | TTL이 필요하면 Number Epoch 초로 추가 |
-| KST 문자열 | 반드시 필요하지 않으며 Epoch 또는 UTC 사용 가능 |
-| 추가 필드 | 필수 필드를 방해하지 않는 범위에서 허용 |
-
-Epoch Time은 Timezone과 무관한 절대 시각이므로 KST 문자열로 변환할 필요가 없습니다. 화면 표시가 필요할 때만 애플리케이션에서 KST로 변환합니다.
-
-#### source-db PutItem은 모든 필드를 한 번에 입력
-
-source-db의 Item은 AWS CLI put-item을 호출할 때 과제지의 필수 필드와 시간 필드를 모두 포함하여 저장합니다. PutItem 이후 별도 Lambda가 실행되어 created_at이나 expires_at을 추가하는 구조가 아닙니다.
-
-예시:
-
-```bash
-CREATED_AT=$(date +%s)
-EXPIRES_AT=$((CREATED_AT + 86400))
-
-ITEM=$(jq -n \
-  --arg record_id "SRC-001" \
-  --arg payload "sample-data" \
-  --argjson created_at "$CREATED_AT" \
-  --argjson expires_at "$EXPIRES_AT" \
-  '{
-    record_id: {S: $record_id},
-    payload: {S: $payload},
-    created_at: {N: ($created_at | tostring)},
-    expires_at: {N: ($expires_at | tostring)}
-  }')
-
-aws dynamodb put-item \
-  --table-name source-db \
-  --item "$ITEM"
-```
-
-record_id와 payload는 예시이므로 실제 과제지에 제시된 필드명으로 교체하고, 필수 필드를 빠짐없이 ITEM에 추가합니다.
-
-저장 결과 확인:
-
-```bash
-aws dynamodb get-item \
-  --table-name source-db \
-  --key '{"record_id":{"S":"SRC-001"}}' \
-  --consistent-read
-```
-
-#### 잘못된 구성과 올바른 구성
-
-| 잘못된 구성 | 올바른 구성 |
-|---|---|
-| TTL Attribute가 String | Epoch 초 Number |
-| created_at에 현재 Epoch를 넣고 같은 필드를 TTL로 사용 | 별도 expires_at에 미래 Epoch 저장 |
-| PutItem 후 Lambda가 created_at을 추가 | 최초 PutItem에 모든 필드 포함 |
-| 과제지 필수 필드를 일부 생략 | 필수 필드 전체 + 필요한 추가 필드 |
-| Epoch를 KST 숫자로 별도 보정 | Epoch는 그대로 저장, 표시할 때만 KST 변환 |
-
-#### 버전별 최종 선택
-
-| 과제 버전 | created_at 처리 |
-|---|---|
-| 현재 07_1 RC PDF·채점표 | unicorn-concert-db에 String(S), ISO 8601 |
-| source-db Stream 추가 공지 적용 버전 | Number(N) Epoch 허용, 모든 필드를 CLI PutItem에 포함 |
-| TTL이 실제 요구되는 경우 | 미래 만료 Epoch를 가진 Number Attribute 지정 |
-
-이 구분을 지키면 기존 RC의 created_at.S 검사와 최신 Stream DynamoDB 공지를 서로 혼동하지 않을 수 있습니다.
 
 ## 6. ECR - 1점
 
@@ -1003,6 +1047,30 @@ Distribution Comment는 unicorn-svc-cf입니다.
 
 Default behavior는 S3, /v1/book*와 /health*는 app-origin으로 보냅니다. query string을 전달하고 정적 GET은 캐싱합니다. HTTP는 HTTPS로 redirect합니다.
 
+
+### 9.1 콘솔·CLI 구축과 검증
+
+1. IP 유형 `unicorn-tg`를 HTTP:8080, Health path `/health`로 만듭니다.
+2. `unicorn-alb`는 Internal Application ALB로 만들고 Private Subnet 3개를 연결합니다.
+3. HTTP:80 Listener에 GET `/v1/book` -> Lambda TG, POST `/v1/book`과 GET `/health` -> `unicorn-tg`, Default fixed 403 규칙을 둡니다.
+4. CloudFront는 **Pay-as-you-go**, Comment `unicorn-svc-cf`로 만들고 S3 OAC Origin과 ALB VPC Origin을 등록합니다.
+5. Default behavior는 S3, `/v1/book*`와 `/health*`는 ALB로 연결합니다. Viewer protocol은 Redirect HTTP to HTTPS, API는 CachingDisabled를 권장합니다.
+6. S3 Bucket Policy의 Principal은 CloudFront Service, `AWS:SourceArn`은 현재 Distribution ARN으로 제한합니다.
+
+```bash
+aws elbv2 describe-load-balancers --names unicorn-alb \
+  --query 'LoadBalancers[0].[Scheme,Type,State.Code,VpcId]'
+aws elbv2 describe-target-health --target-group-arn "$APP_TG_ARN" \
+  --query 'TargetHealthDescriptions[*].[Target.Id,TargetHealth.State]'
+aws cloudfront list-distributions \
+  --query "DistributionList.Items[?Comment=='unicorn-svc-cf'].[Id,DomainName,Status]"
+curl -i "https://${CF_DOMAIN}/"
+curl -i "https://${CF_DOMAIN}/health"
+curl -i "https://${CF_DOMAIN}/v1/book?booking_id=${BOOKING_ID}"
+```
+
+S3가 403이면 OAC와 Distribution ARN, API가 400이면 Query String 전달, 502이면 VPC Origin·ALB SG·Target Health를 확인합니다.
+
 ## 10. WAF - 1점 + Runtime 1.5점
 
 ### 10.1 정답 설정표
@@ -1149,6 +1217,38 @@ curl -i "https://${CF_DOMAIN}/health"
 
 External ID 없이 AssumeRole은 AccessDenied, 올바른 값으로는 성공해야 합니다. Assume 후 DescribeVpcs는 성공하고 DescribeInstances는 UnauthorizedOperation이어야 합니다.
 
+
+### 11.1 Trust·Inline Policy 작성
+
+Trust Policy는 과제에서 지정한 동일 계정 IAM Principal ARN 하나와 정확한 External ID만 허용합니다. Principal `*`나 계정 전체 root를 쓰지 않습니다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"AWS": "AUDITOR_PRINCIPAL_ARN"},
+    "Action": "sts:AssumeRole",
+    "Condition": {"StringEquals": {
+      "sts:ExternalId": "unicorn-audit-2026<선수등번호>"
+    }}
+  }]
+}
+```
+
+Inline Policy에는 `unicorn-concert-db`의 GetItem·Query, `unicorn-eks-cluster`의 DescribeCluster, DescribeVpcs만 넣습니다. DynamoDB와 EKS는 정확한 ARN으로 제한합니다. EC2 Describe API는 Resource-level 권한을 지원하지 않아 `Resource: "*"`가 필요한 예외가 있으므로 채점표가 요구하는 조건 방식이 있으면 그것을 우선합니다. Maximum session duration은 3600초입니다.
+
+```bash
+aws iam get-role --role-name unicorn-audit-role \
+  --query 'Role.[RoleName,MaxSessionDuration,AssumeRolePolicyDocument]'
+aws sts assume-role \
+  --role-arn "arn:aws:iam::$ACCOUNT_ID:role/unicorn-audit-role" \
+  --role-session-name audit-test \
+  --external-id "unicorn-audit-2026$NUMBER"
+```
+
+External ID가 없거나 틀리면 AccessDenied가 정상입니다. 임시 자격증명으로 DescribeVpcs·DescribeCluster는 성공하고 DescribeInstances는 거부되어야 합니다.
+
 ## 12. Observability - 2점
 
 Fluent Bit DaemonSet이 Book App 로그를 10초 안에 /unicorn/eks/book-app으로 전송해야 합니다. /health 로그는 제외합니다.
@@ -1177,6 +1277,73 @@ Grafana:
 5. Book App HTTP Request Duration - Time Series
 
 No Data, 잘못된 Panel type, 다른 이름은 오답입니다.
+
+
+### 12.1 Fluent Bit 실제 구성
+
+Fluent Bit은 DaemonSet으로 모든 Node에서 실행하고 Book App 로그만 수집합니다. Flush는 10초 이하, `/health` 레코드는 grep filter로 제외하고 CloudWatch Log Group은 `/unicorn/eks/book-app`으로 지정합니다.
+
+```ini
+[SERVICE]
+    Flush 5
+[FILTER]
+    Name grep
+    Match kube.*
+    Exclude log /health
+[OUTPUT]
+    Name cloudwatch_logs
+    Match kube.*
+    region ap-northeast-2
+    log_group_name /unicorn/eks/book-app
+    auto_create_group false
+```
+
+```bash
+aws logs create-log-group --log-group-name /unicorn/eks/book-app
+aws logs associate-kms-key --log-group-name /unicorn/eks/book-app \
+  --kms-key-id "$PLATFORM_KMS_ARN"
+kubectl -n kube-system get daemonset,pods -l k8s-app=fluent-bit -o wide
+aws logs tail /unicorn/eks/book-app --since 5m
+```
+
+로그는 `timestamp, method, path, status_code, client_ip`의 JSON 필드를 가지며 `/health` 로그가 없어야 합니다.
+
+### 12.2 Prometheus·Grafana 실제 구성
+
+```bash
+kubectl create namespace monitoring
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm upgrade --install kube-prometheus-stack \
+  prometheus-community/kube-prometheus-stack --namespace monitoring \
+  --set grafana.adminUser="skills$NUMBER" \
+  --set grafana.adminPassword="HelloKrSkills!$NUMBER@" \
+  --set grafana.nodeSelector.unicorn=addon \
+  --set prometheus.prometheusSpec.nodeSelector.unicorn=addon
+```
+
+관리형 Control Plane의 미노출 메트릭은 Helm values에서 다음처럼 끕니다.
+
+```yaml
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+```
+
+Grafana Service 앞에 인터넷 연결형 `unicorn-grafana-alb` / `unicorn-grafana-tg`를 만들고, `unicorn-grafana-dashboard`에 과제지와 같은 이름·순서·Panel type으로 5개 패널을 배치합니다.
+
+```bash
+kubectl -n monitoring get pods -o wide
+kubectl -n monitoring get servicemonitor | \
+  grep -E 'controller-manager|scheduler|etcd' || true
+aws elbv2 describe-load-balancers --names unicorn-grafana-alb \
+  --query 'LoadBalancers[0].[Scheme,State.Code,DNSName]'
+```
+
+Monitoring Pod는 Addon Node에 배치되고 DaemonSet만 App Node에서도 실행될 수 있습니다. 모든 Grafana 패널은 No Data가 아니라 실제 메트릭을 표시해야 합니다.
 
 ## 13. 실제 채점 요청
 
