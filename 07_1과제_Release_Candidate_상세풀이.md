@@ -32,26 +32,66 @@ aws configure set region $AWS_REGION
 
 ## 2. Networking - 3점
 
-VPC는 unicorn-vpc, CIDR은 10.97.0.0/16입니다.
+### 2.1 전체 구성표
 
-| Subnet | AZ | CIDR |
-|---|---|---|
-| unicorn-subnet-pub-a | 2a | 10.97.0.0/24 |
-| unicorn-subnet-pub-b | 2b | 10.97.1.0/24 |
-| unicorn-subnet-pub-c | 2c | 10.97.2.0/24 |
-| unicorn-subnet-priv-a | 2a | 10.97.10.0/24 |
-| unicorn-subnet-priv-b | 2b | 10.97.11.0/24 |
-| unicorn-subnet-priv-c | 2c | 10.97.12.0/24 |
+VPC는 `unicorn-vpc`, CIDR은 `10.97.0.0/16`입니다. NAT Gateway까지 포함한 최종 구성은 다음 표와 같아야 합니다.
 
-Public 세 개는 unicorn-rt-pub에 연결하고 0.0.0.0/0을 unicorn-igw로 보냅니다. Private은 unicorn-rt-priv-a/b/c로 분리해 같은 AZ의 unicorn-nat-a/b/c로 보냅니다. Public Association은 3, 각 Private은 1이어야 합니다.
+| 구분 | Subnet | AZ | CIDR | Public IPv4 자동 할당 | Route Table | `0.0.0.0/0` 대상 | NAT Gateway / EIP |
+|---|---|---|---|---|---|---|---|
+| Public | unicorn-subnet-pub-a | ap-northeast-2a | 10.97.0.0/24 | 활성화 | unicorn-rt-pub | unicorn-igw | unicorn-nat-a / 새 Elastic IP |
+| Public | unicorn-subnet-pub-b | ap-northeast-2b | 10.97.1.0/24 | 활성화 | unicorn-rt-pub | unicorn-igw | unicorn-nat-b / 새 Elastic IP |
+| Public | unicorn-subnet-pub-c | ap-northeast-2c | 10.97.2.0/24 | 활성화 | unicorn-rt-pub | unicorn-igw | unicorn-nat-c / 새 Elastic IP |
+| Private | unicorn-subnet-priv-a | ap-northeast-2a | 10.97.10.0/24 | 비활성화 | unicorn-rt-priv-a | unicorn-nat-a | 해당 없음 |
+| Private | unicorn-subnet-priv-b | ap-northeast-2b | 10.97.11.0/24 | 비활성화 | unicorn-rt-priv-b | unicorn-nat-b | 해당 없음 |
+| Private | unicorn-subnet-priv-c | ap-northeast-2c | 10.97.12.0/24 | 비활성화 | unicorn-rt-priv-c | unicorn-nat-c | 해당 없음 |
 
-반드시 포함할 VPC Endpoint:
+NAT Gateway는 반드시 같은 AZ의 Public Subnet에 생성합니다. 즉 `unicorn-nat-a`는 `unicorn-subnet-pub-a`, `unicorn-nat-b`는 `unicorn-subnet-pub-b`, `unicorn-nat-c`는 `unicorn-subnet-pub-c`에 배치합니다. 각 NAT Gateway에는 서로 다른 Elastic IP를 할당합니다.
 
-- com.amazonaws.ap-northeast-2.s3
-- com.amazonaws.ap-northeast-2.ecr.api
-- com.amazonaws.ap-northeast-2.ecr.dkr
+### 2.2 Internet Gateway와 Route Table 검증표
 
-Private DNS와 Endpoint SG의 HTTPS 허용을 확인하고 VPC Flow Log를 1개 이상 활성화합니다.
+| 리소스 | 연결 대상 | 필수 Route | Subnet Association 수 |
+|---|---|---|---|
+| unicorn-igw | unicorn-vpc | 해당 없음 | 해당 없음 |
+| unicorn-rt-pub | Public Subnet a/b/c | `0.0.0.0/0 -> unicorn-igw` | 3 |
+| unicorn-rt-priv-a | unicorn-subnet-priv-a | `0.0.0.0/0 -> unicorn-nat-a` | 1 |
+| unicorn-rt-priv-b | unicorn-subnet-priv-b | `0.0.0.0/0 -> unicorn-nat-b` | 1 |
+| unicorn-rt-priv-c | unicorn-subnet-priv-c | `0.0.0.0/0 -> unicorn-nat-c` | 1 |
+
+Public Route Table 하나를 세 Public Subnet이 공유하고, Private Route Table은 AZ별로 하나씩 분리합니다. 이렇게 해야 한 AZ의 NAT 장애가 다른 AZ의 Private Subnet 경로에 직접 영향을 주지 않습니다.
+
+### 2.3 VPC Endpoint 구성표
+
+| Endpoint Service | 유형 | 연결 대상 | Private DNS | Security Group |
+|---|---|---|---|---|
+| com.amazonaws.ap-northeast-2.s3 | Gateway | unicorn-rt-priv-a/b/c | 해당 없음 | 해당 없음 |
+| com.amazonaws.ap-northeast-2.ecr.api | Interface | Private Subnet a/b/c | 활성화 | Endpoint SG |
+| com.amazonaws.ap-northeast-2.ecr.dkr | Interface | Private Subnet a/b/c | 활성화 | Endpoint SG |
+
+Endpoint SG의 Inbound에는 `HTTPS / TCP 443 / 10.97.0.0/16`을 허용합니다. 더 엄격하게 구성하려면 EKS Node SG를 Source로 지정해도 되지만, 채점 전에 실제 Node에서 ECR API와 이미지 레이어에 접근되는지 확인해야 합니다. Interface Endpoint 두 개는 세 Private Subnet을 모두 선택하고 **Enable Private DNS name**을 활성화합니다.
+
+S3는 Interface Endpoint가 아니라 Gateway Endpoint로 만들고 세 Private Route Table에 연결합니다. ECR 이미지 pull 과정은 ECR API/DKR뿐 아니라 이미지 레이어가 저장된 S3에도 접근하므로 S3 Endpoint를 빠뜨리면 Private Node의 이미지 pull이 실패할 수 있습니다.
+
+### 2.4 VPC Flow Log 구성표
+
+| 항목 | 권장 설정 |
+|---|---|
+| 대상 | unicorn-vpc |
+| Filter | ALL |
+| Destination | CloudWatch Logs |
+| Log Group | 예: `/aws/vpc/unicorn-flow-log` |
+| IAM Role | VPC Flow Logs가 CloudWatch Logs에 기록할 수 있는 전용 Role |
+| 필수 상태 | Flow Log 1개 이상, Active |
+
+### 2.5 최종 체크리스트
+
+- VPC DNS resolution과 DNS hostnames가 모두 활성화되어 있는지 확인합니다.
+- NAT Gateway 세 개가 `Available` 상태이고 각기 다른 Public Subnet과 Elastic IP를 사용하는지 확인합니다.
+- Public Route Table Association은 3, 각 Private Route Table Association은 1인지 확인합니다.
+- Private Subnet의 기본 경로가 같은 AZ의 NAT Gateway를 가리키는지 확인합니다.
+- ECR Interface Endpoint 두 개의 Private DNS가 활성화되어 있는지 확인합니다.
+- Endpoint SG가 Node에서 들어오는 TCP 443을 허용하는지 확인합니다.
+- S3 Gateway Endpoint가 세 Private Route Table에 모두 연결되어 있는지 확인합니다.
+- VPC Flow Log가 `Active` 상태인지 확인합니다.
 
 ## 3. KMS - 1점
 
