@@ -23,6 +23,11 @@ const docs = {
     description: "select/1과제/02_1과제_1등 문제를 채점 스크립트 기준으로 더 자세히 풀어쓴 절차형 문서입니다.",
     file: "02_1과제_1등_상세풀이.md",
   },
+  task02tomorrow: {
+    title: "내일 변경과제 30% 대응센터",
+    description: "최종 과제 공개 직후 변경점을 찾고 4시간 안에 재구성하기 위한 비교표와 Module별 체크리스트입니다.",
+    file: "02_2과제_내일변경_대응센터.md",
+  },
   task02second: {
     title: "2과제 풀이해설서",
     description: "select/2과제/02_2과제_1등의 Workflow, Analytics, Event Handling, MSK 모듈 풀이와 이론을 정리한 문서입니다.",
