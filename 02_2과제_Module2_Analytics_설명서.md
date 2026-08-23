@@ -862,3 +862,270 @@ aws ssm get-command-invocation \
 - Flink 이름은 wsc2026-analytics-flink이며 조회 가능하다.
 - Notebook SQL에서 주문 데이터가 보인다.
 - 테스트용 반복 요청을 중지했다.
+
+## 2.23 Console + CLI 병행 풀이
+
+앞의 2.10~2.22는 복사 실행용 CLI 풀이입니다. Console로 만들 때는 아래 절을 같은 순서로 진행하고, 각 단계 끝에 표시된 기존 CLI 절로 교차 검증합니다.
+
+| 단계 | Console | CLI |
+|---|---|---|
+| Network | VPC Console | 2.11 |
+| Security Group | EC2 → Security Groups | 2.12 |
+| Kinesis / IAM | Kinesis, IAM | 2.13 |
+| Private EC2 / SSM | EC2, Systems Manager | 2.14~2.15 |
+| ALB | EC2 → Target Groups, Load Balancers | 2.16 |
+| Flink Studio | IAM, Glue, Managed Flink | 2.18~2.19 |
+| 최종 채점 | CloudShell, SSM | 2.20 |
+
+Console과 CLI를 섞어도 되지만 리소스 이름, Subnet, Port는 반드시 동일해야 합니다.
+
+## 2.24 Console 1: VPC, Subnet, NAT
+
+### VPC
+
+1. Region을 서울(ap-northeast-2)로 변경합니다.
+2. VPC → Your VPCs → Create VPC → VPC only를 선택합니다.
+3. Name analytics-vpc, IPv4 CIDR 10.20.0.0/16으로 생성합니다.
+4. Actions → Edit VPC settings에서 DNS resolution과 DNS hostnames를 모두 활성화합니다.
+
+### Subnet
+
+VPC → Subnets → Create subnet에서 analytics-vpc를 선택하고 다음 네 개를 만듭니다.
+
+| Name | AZ | CIDR |
+|---|---|---|
+| analytics-pub-a | ap-northeast-2a | 10.20.0.0/24 |
+| analytics-pub-b | ap-northeast-2b | 10.20.1.0/24 |
+| analytics-priv-a | ap-northeast-2a | 10.20.100.0/24 |
+| analytics-priv-b | ap-northeast-2b | 10.20.101.0/24 |
+
+Public 두 개만 Actions → Edit subnet settings → Auto-assign public IPv4를 활성화합니다. Private은 비활성화합니다.
+
+### IGW와 NAT
+
+1. Internet gateways → Create → Name analytics-igw → analytics-vpc에 Attach합니다.
+2. Elastic IP addresses → Allocate에서 analytics-nat-eip를 만듭니다.
+3. NAT gateways → Create:
+   - Name analytics-nat
+   - Subnet analytics-pub-a
+   - Connectivity Public
+   - Elastic IP analytics-nat-eip
+4. Status가 Available이 될 때까지 기다립니다.
+
+### Route Table
+
+| Name | Subnet Association | 0.0.0.0/0 Target |
+|---|---|---|
+| analytics-rt-pub | analytics-pub-a, pub-b | analytics-igw |
+| analytics-rt-priv | analytics-priv-a, priv-b | analytics-nat |
+
+Route tables → Create에서 두 개를 만든 뒤 Routes와 Subnet associations 탭에서 표대로 설정합니다. Private Route를 IGW로 직접 보내면 안 됩니다.
+
+**CLI 대응:** 2.11.
+
+## 2.25 Console 2: Security Group
+
+### ALB SG
+
+EC2 → Security Groups → Create:
+
+- Name: wsc2026-analytics-alb-sg
+- VPC: analytics-vpc
+- Inbound: HTTP / TCP 80 / 0.0.0.0/0
+- Outbound: All traffic
+
+### App SG
+
+- Name: wsc2026-analytics-app-sg
+- VPC: analytics-vpc
+- Inbound: Custom TCP / 5000 / Source wsc2026-analytics-alb-sg
+- Outbound: All traffic
+
+App SG의 Source는 CIDR이 아니라 ALB SG여야 합니다. SSH 22를 인터넷에 열지 않습니다.
+
+**CLI 대응:** 2.12.
+
+## 2.26 Console 3: Kinesis와 EC2 IAM
+
+### Kinesis
+
+Kinesis → Data streams → Create data stream:
+
+- Name: wsc2026-order-stream
+- Capacity mode: On-demand
+- 완료 후 Status: Active
+
+### EC2 Role
+
+1. IAM → Roles → Create role → AWS service → EC2를 선택합니다.
+2. AmazonSSMManagedInstanceCore를 추가합니다.
+3. Role name은 오타를 그대로 사용해 wsc2026-alaytics-ec2-role로 생성합니다.
+4. Role → Add permissions → Create inline policy → JSON에 입력합니다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["kinesis:PutRecord", "kinesis:PutRecords"],
+    "Resource": "arn:aws:kinesis:ap-northeast-2:<ACCOUNT_ID>:stream/wsc2026-order-stream"
+  }]
+}
+```
+
+<ACCOUNT_ID>는 실제 Account ID로 교체합니다. Trust relationships에는 ec2.amazonaws.com이 있어야 합니다. AmazonSSMManagedInstanceCore가 없으면 채점기의 SSM 명령이 실패합니다.
+
+**CLI 대응:** 2.13.
+
+## 2.27 Console 4: Private EC2와 앱
+
+### EC2 생성
+
+EC2 → Instances → Launch instances:
+
+| 항목 | 설정 |
+|---|---|
+| Name | wsc2026-analytics-ec2 |
+| AMI | Amazon Linux 2023 x86_64 |
+| Type | t3.small |
+| VPC | analytics-vpc |
+| Subnet | analytics-priv-a |
+| Auto-assign Public IP | Disable |
+| Security Group | wsc2026-analytics-app-sg |
+| Advanced → IAM Profile | wsc2026-alaytics-ec2-role |
+
+Session Manager만 사용하면 Key pair 없이 진행할 수 있습니다. 생성 후 Networking 탭의 Public IPv4가 비어 있고 Subnet Name이 analytics-priv-a인지 확인합니다.
+
+### SSM 접속
+
+1. Systems Manager → Fleet Manager → Managed nodes에서 EC2가 Online인지 확인합니다.
+2. EC2 → Instance 선택 → Connect → Session Manager → Connect를 누릅니다.
+3. 2.15의 앱 설치 명령과 app.service 내용을 그대로 실행합니다.
+4. 다음 결과를 확인합니다.
+
+```bash
+systemctl is-active app
+systemctl is-enabled app
+curl -s http://127.0.0.1:5000/health
+sudo journalctl -u app -n 50 --no-pager
+```
+
+기대 결과는 active, enabled, {"status":"healthy"}입니다. SSM이 Offline이면 IAM Profile, SSM Managed Policy, Private Route → NAT, Outbound 443을 확인합니다.
+
+**CLI 대응:** 2.14~2.15.
+
+## 2.28 Console 5: Target Group과 ALB
+
+### Target Group
+
+EC2 → Target Groups → Create target group:
+
+| 항목 | 값 |
+|---|---|
+| Target type | Instances |
+| Name | wsc2026-analytics-tg |
+| Protocol / Port | HTTP / 5000 |
+| VPC | analytics-vpc |
+| Health path | /health |
+| Success code | 200 |
+
+Register targets에서 wsc2026-analytics-ec2를 Port 5000으로 등록합니다.
+
+### ALB
+
+EC2 → Load Balancers → Create → Application Load Balancer:
+
+| 항목 | 값 |
+|---|---|
+| Name | wsc2026-analytics-alb |
+| Scheme | Internet-facing |
+| IP type | IPv4 |
+| VPC | analytics-vpc |
+| AZ/Subnet | 2a/pub-a, 2b/pub-b |
+| Security Group | wsc2026-analytics-alb-sg |
+| Listener | HTTP 80 |
+| Default target | wsc2026-analytics-tg |
+
+생성 후 ALB Status는 Active, Target Group의 EC2는 Healthy여야 합니다.
+
+| Target 상태 | 확인 |
+|---|---|
+| initial | 잠시 기다린 후 새로고침 |
+| unhealthy | app.service, Port 5000, /health, App SG |
+| unused | ALB Listener와 Target Group 연결 |
+
+**CLI 대응:** 2.16.
+
+## 2.29 Console 6: Runtime과 Kinesis 확인
+
+ALB 화면에서 DNS name을 복사해 CloudShell에서 실행합니다.
+
+```bash
+export ALB_DNS=<ALB-DNS>
+
+curl -i "http://$ALB_DNS/health"
+curl -i -X POST "http://$ALB_DNS/order"
+curl -i -X POST "http://$ALB_DNS/orders/generate"
+```
+
+| API | 기대 |
+|---|---|
+| GET /health | HTTP 200, healthy |
+| POST /order | HTTP 201, 주문 JSON 1개 |
+| POST /orders/generate | HTTP 201, generated 10 |
+
+Kinesis → wsc2026-order-stream → Monitoring에서 Incoming data와 PutRecord 성공이 증가하는지 확인합니다. Record 본문은 2.17의 get-shard-iterator/get-records CLI로 확인합니다.
+
+## 2.30 Console 7: Flink Studio
+
+### Flink Role
+
+1. IAM → Roles → Create role → Custom trust policy를 선택합니다.
+2. Service Principal은 kinesisanalytics.amazonaws.com입니다.
+3. Name은 wsc2026-analytics-flink-role입니다.
+4. 2.18의 flink-policy.json을 Inline Policy로 추가합니다.
+
+### Glue Database
+
+AWS Glue → Data Catalog → Databases → Add database:
+
+- Name: wsc2026_analytics
+
+### Studio Notebook
+
+Managed Service for Apache Flink → Studio notebooks → Create Studio notebook:
+
+| 항목 | 값 |
+|---|---|
+| Name | wsc2026-analytics-flink |
+| Runtime | ZEPPELIN-FLINK-3_0 |
+| Application mode | INTERACTIVE |
+| Glue Database | wsc2026_analytics |
+| Service Role | wsc2026-analytics-flink-role |
+
+생성 후 Start/Run을 눌러 Ready 또는 Running 상태를 확인하고 Open in Apache Zeppelin을 선택합니다.
+
+1. 2.19의 CREATE TABLE order_stream SQL을 실행합니다.
+2. Source Table 생성 후 /orders/generate를 여러 번 호출합니다.
+3. 최근 1분 주문 수 SQL을 실행합니다.
+4. 상품별 누적 매출 SQL을 실행합니다.
+
+No data이면 Flink Role의 Kinesis GetRecords 계열 권한, Stream 이름/Region, CREATE TABLE 이후 주문 생성 여부를 확인합니다.
+
+**CLI 대응:** 2.18~2.19.
+
+## 2.31 Console + CLI 교차 검증
+
+| Console 확인 | CLI 확인 |
+|---|---|
+| EC2 Public IPv4 없음 | describe-instances |
+| Private Subnet Name | describe-subnets |
+| app active/enabled | SSM send-command |
+| ALB Active / HTTP 80 | describe-load-balancers/listeners |
+| Target Healthy / 5000 | describe-target-health/target-groups |
+| Kinesis Active / On-demand | describe-stream-summary |
+| 주문 Record 유입 | POST /order + get-records |
+| Flink 이름/Runtime | describe-application |
+| Flink SQL 결과 | Zeppelin 결과 |
+
+Console로 구축했더라도 마지막에는 반드시 2.20의 명령을 전부 실행합니다. 이 결과가 실제 채점 스크립트가 조회하는 값입니다.
