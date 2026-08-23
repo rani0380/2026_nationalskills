@@ -894,19 +894,137 @@ Default behavior는 S3, /v1/book*와 /health*는 app-origin으로 보냅니다. 
 
 ## 10. WAF - 1점 + Runtime 1.5점
 
-us-east-1에 unicorn-waf를 만듭니다.
+### 10.1 정답 설정표
 
-- Default Allow
-- AWSManagedRulesCommonRuleSet
-- AWSManagedRulesKnownBadInputsRuleSet
-- unicorn-rate-limit
-- 60초 50건 초과 block
-- Custom response 403
-- Body: Request blocked by Unicorn WAF
-- Log Group aws-waf-logs-unicorn
-- Platform CMK 암호화
+| 항목 | 값 |
+|---|---|
+| Web ACL | unicorn-waf |
+| Scope / Region | CloudFront distributions / us-east-1 |
+| Default action | Allow |
+| Managed rules | AWSManagedRulesCommonRuleSet, AWSManagedRulesKnownBadInputsRuleSet |
+| Rate rule | unicorn-rate-limit |
+| Aggregate / Window / Limit | Source IP / 60초 / 50 |
+| Rate action | Block |
+| Custom response | 403 / Request blocked by Unicorn WAF |
+| Log Group / Encryption | aws-waf-logs-unicorn / Platform CMK |
 
-XSS 요청은 403, Rate test 후 /health는 403과 지정 body를 반환해야 합니다.
+CloudFront용 Web ACL은 Global 리소스이므로 Console Region을 N. Virginia(us-east-1)로 바꾸고 Scope를 CloudFront distributions로 선택합니다. Web ACL 조회·수정 CLI에는 --scope CLOUDFRONT --region us-east-1을 사용합니다.
+
+### 10.2 Web ACL과 Managed Rule 생성
+
+1. WAF & Shield -> Web ACLs -> Create web ACL로 이동합니다.
+2. Resource type은 CloudFront distributions, Name은 unicorn-waf로 지정합니다.
+3. Default web ACL action은 Allow로 둡니다.
+4. AWS managed rule groups에서 Core rule set(AWSManagedRulesCommonRuleSet)과 Known bad inputs(AWSManagedRulesKnownBadInputsRuleSet)을 추가합니다.
+5. 두 Managed Rule의 Override action은 None으로 둡니다. Count로 바꾸면 XSS가 차단되지 않습니다.
+6. Web ACL을 현재 CloudFront Distribution에 연결합니다.
+
+권장 우선순위는 CommonRuleSet 10, KnownBadInputsRuleSet 20, Rate Rule 30입니다. 실제 숫자는 달라도 되지만 세 규칙이 모두 활성화되어야 합니다.
+
+### 10.3 60초 50건 Rate Rule
+
+Add rules -> Add my own rules and rule groups -> Rule builder에서 설정합니다.
+
+| 필드 | 설정 |
+|---|---|
+| Name / Type | unicorn-rate-limit / Rate-based rule |
+| Rate limit / Evaluation window | 50 / 1 minute (60 seconds) |
+| Request aggregation | IP address |
+| Scope-down statement | 없음 |
+| Action | Block |
+| Custom response code | 403 |
+| Custom body name / type | unicorn-rate-block-body / TEXT_PLAIN |
+| Body | Request blocked by Unicorn WAF |
+
+전체 CloudFront 요청을 IP별로 제한해야 하므로 Scope-down은 비워 둡니다. AWS WAF Rate Rule은 정확히 51번째 요청을 즉시 차단하는 고정 카운터가 아니라 최근 요청률을 주기적으로 평가합니다. 반복 요청 직후 최대 수십 초 동안 200이 더 나올 수 있으므로 잠시 기다려 재검증합니다.
+
+### 10.4 CloudWatch Logs와 Platform CMK
+
+WAF Log Group은 Web ACL과 같은 us-east-1에 만들고 이름이 반드시 aws-waf-logs-로 시작해야 합니다.
+
+```bash
+WAF_REGION=us-east-1
+LOG_GROUP=aws-waf-logs-unicorn
+
+aws logs create-log-group \
+  --region "$WAF_REGION" \
+  --log-group-name "$LOG_GROUP" \
+  --kms-key-id alias/unicorn-kms-platform
+
+# 이미 만든 Log Group에 CMK를 연결할 때
+aws logs associate-kms-key \
+  --region "$WAF_REGION" \
+  --log-group-name "$LOG_GROUP" \
+  --kms-key-id alias/unicorn-kms-platform
+```
+
+Platform CMK의 us-east-1 Replica Key 정책은 logs.us-east-1.amazonaws.com의 Encrypt, Decrypt, ReEncrypt, GenerateDataKey, DescribeKey를 허용해야 합니다. Encryption Context는 해당 Log Group ARN으로 제한합니다. Key가 ap-northeast-2에만 있으면 us-east-1 Log Group에 연결할 수 없습니다.
+
+WAF -> unicorn-waf -> Logging and metrics -> Enable logging에서 CloudWatch Logs와 aws-waf-logs-unicorn을 선택하고 Keep all logs로 둡니다.
+
+```bash
+WAF_ARN=$(aws wafv2 list-web-acls \
+  --scope CLOUDFRONT --region us-east-1 \
+  --query "WebACLs[?Name=='unicorn-waf'].ARN | [0]" --output text)
+
+LOG_ARN=$(aws logs describe-log-groups \
+  --region us-east-1 \
+  --log-group-name-prefix aws-waf-logs-unicorn \
+  --query "logGroups[?logGroupName=='aws-waf-logs-unicorn'].logGroupArn | [0]" \
+  --output text)
+
+aws wafv2 put-logging-configuration \
+  --region us-east-1 \
+  --logging-configuration \
+  "ResourceArn=$WAF_ARN,LogDestinationConfigs=[$LOG_ARN]"
+```
+
+put-logging-configuration에는 --scope 옵션을 넣지 않습니다. ResourceArn이 CloudFront Scope의 Web ACL을 식별합니다.
+
+### 10.5 설정 검증 명령
+
+```bash
+WAF_ID=$(aws wafv2 list-web-acls \
+  --scope CLOUDFRONT --region us-east-1 \
+  --query "WebACLs[?Name=='unicorn-waf'].Id | [0]" --output text)
+
+aws wafv2 get-web-acl \
+  --name unicorn-waf --id "$WAF_ID" \
+  --scope CLOUDFRONT --region us-east-1 \
+  --query '{Default:WebACL.DefaultAction,Rules:WebACL.Rules[*].{Name:Name,Priority:Priority,Action:Action,Override:OverrideAction,Statement:Statement}}'
+
+aws wafv2 get-logging-configuration \
+  --resource-arn "$WAF_ARN" --region us-east-1
+
+aws logs describe-log-groups \
+  --region us-east-1 \
+  --log-group-name-prefix aws-waf-logs-unicorn \
+  --query 'logGroups[*].[logGroupName,kmsKeyId]' --output table
+```
+
+Default Allow, Managed Rule 두 개, unicorn-rate-limit, Limit 50, EvaluationWindowSec 60, CustomResponse 403 및 Platform CMK ARN을 확인합니다.
+
+### 10.6 Runtime 테스트
+
+```bash
+CF_DOMAIN=배포도메인.cloudfront.net
+
+curl -i "https://${CF_DOMAIN}/health"
+
+# XSS: HTTP 403 기대
+curl -i "https://${CF_DOMAIN}/health?q=%3Cscript%3Ealert%281%29%3C%2Fscript%3E"
+
+# 동일 IP에서 60초 구간의 Limit 초과
+for i in $(seq 1 70); do
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    "https://${CF_DOMAIN}/health?rate_test=${i}"
+done
+
+sleep 10
+curl -i "https://${CF_DOMAIN}/health"
+```
+
+정상 요청은 처음에 200, XSS 요청은 403이어야 합니다. Rate Rule이 활성화되면 마지막 /health 요청은 403과 정확한 본문 Request blocked by Unicorn WAF를 반환해야 합니다. XSS가 200이면 Managed Rule Override가 Count인지 확인하고, Rate 요청이 계속 200이면 Window 60, Limit 50 및 CloudFront Web ACL 연결을 확인합니다.
 
 ## 11. Audit Role - 2점
 
