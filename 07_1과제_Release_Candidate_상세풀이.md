@@ -279,26 +279,197 @@ aws ecr describe-image-scan-findings   --repository-name unicorn-concert-app   -
 | Pod에서 /bin/sh 오류 | scratch에는 shell 없음 | exec probe 대신 HTTP /health 사용 |
 ## 7. EKS - 4.5점
 
-Cluster unicorn-eks-cluster, Kubernetes 1.35:
+채점은 Cluster 1.5점, NodeGroup 1.5점, Workload 1.5점입니다. Cluster  unicorn-mark 연결  Launch Template  NodeGroup  Pod Identity  App 순서로 진행합니다.
 
-- endpointPublicAccess false
-- endpointPrivateAccess true
-- Private Subnet 3개
-- api, audit, authenticator, controllerManager, scheduler 로그 활성화
-- Secrets envelope encryption: Platform CMK
-- Node EBS와 로그도 Platform CMK
-- 모든 Node는 Public IP 없음, timezone KST
+### 7.1 정답 설정표
 
-| NodeGroup | Label | EC2 Name tag | 수량 |
-|---|---|---|---|
-| App | unicorn=app | unicorn-k8snode-app-node | 2대 이상, 2개 이상 AZ |
-| Addon | unicorn=addon | unicorn-k8snode-addon-node | 1대 이상 |
+| 구분 | 필수 값 |
+|---|---|
+| Cluster | unicorn-eks-cluster / 1.35 |
+| Endpoint | Public false / Private true |
+| Subnet | Private a, b, c |
+| Logs | api, audit, authenticator, controllerManager, scheduler |
+| API data / EBS / Logs KMS | alias/unicorn-kms-platform |
+| App Node | unicorn=app, 2대 이상, 2개 이상 AZ |
+| Addon Node | unicorn=addon, 1대 이상 |
+| EC2 Name | unicorn-k8snode-app-node / unicorn-k8snode-addon-node |
+| Namespace | unicorn |
+| Deployment / Service | unicorn-book-app-deploy / unicorn-book-app-svc |
+| ServiceAccount | unicorn-book-app-sa |
 
-App과 DaemonSet을 제외한 Addon은 addon Node에, Book App은 app Node에만 배치합니다.
+### 7.2 IAM Role 준비
 
-### Book App 필수 Manifest
+Cluster Role에는 AmazonEKSClusterPolicy를 연결하고 Trust Principal을 eks.amazonaws.com으로 설정합니다. Node Role Trust Principal은 ec2.amazonaws.com이며 다음 정책이 필요합니다.
+
+- AmazonEKSWorkerNodePolicy
+- AmazonEC2ContainerRegistryPullOnly
+- AmazonEKS_CNI_Policy 또는 CNI 전용 역할
+
+DynamoDB App 권한은 Node Role에 넣지 않고 Pod Identity Role에만 넣습니다.
+
+### 7.3 콘솔에서 Private Cluster 생성
+
+1. EKS  Clusters  Create cluster로 이동합니다.
+2. Name unicorn-eks-cluster, Kubernetes 1.35를 선택합니다.
+3. unicorn-vpc와 Private Subnet a/b/c만 선택합니다.
+4. Endpoint access는 Private only로 설정합니다.
+5. Control Plane Logging 5종을 모두 활성화합니다.
+6. Kubernetes API data encryption에 alias/unicorn-kms-platform을 지정합니다.
+7. Authentication mode는 API 또는 API_AND_CONFIG_MAP을 선택합니다.
+8. Cluster가 Active가 될 때까지 기다립니다.
+
+VPC의 DNS support와 DNS hostnames가 켜져 있어야 Private Endpoint가 해석됩니다. unicorn-mark SG에서 Cluster SG의 TCP 443 접근도 허용합니다.
+
+기존 Cluster 교정:
+
+```bash
+aws eks update-cluster-config --name unicorn-eks-cluster --resources-vpc-config endpointPublicAccess=false,endpointPrivateAccess=true
+aws eks wait cluster-active --name unicorn-eks-cluster
+aws eks update-cluster-config --name unicorn-eks-cluster --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}'
+```
+
+### 7.4 unicorn-mark에서 kubectl 연결
+
+```bash
+aws eks update-kubeconfig --region ap-northeast-2 --name unicorn-eks-cluster
+kubectl cluster-info
+kubectl get nodes
+```
+
+timeout은 네트워크/SG/DNS 문제, Unauthorized는 Access Entry/RBAC 문제입니다. CloudShell Role의 Access Entry를 확인합니다.
+
+```bash
+aws sts get-caller-identity --query Arn --output text
+aws eks list-access-entries --cluster-name unicorn-eks-cluster
+```
+
+### 7.5 Platform CMK EBS Launch Template
+
+App용과 Addon용 Launch Template을 각각 만듭니다. 핵심 Launch Template Data:
+
+```json
+{
+  "InstanceType": "t3.medium",
+  "BlockDeviceMappings": [{
+    "DeviceName": "/dev/xvda",
+    "Ebs": {
+      "VolumeSize": 30,
+      "VolumeType": "gp3",
+      "Encrypted": true,
+      "KmsKeyId": "alias/unicorn-kms-platform",
+      "DeleteOnTermination": true
+    }
+  }],
+  "TagSpecifications": [{
+    "ResourceType": "instance",
+    "Tags": [{"Key": "Name", "Value": "unicorn-k8snode-app-node"}]
+  }],
+  "MetadataOptions": {
+    "HttpTokens": "required",
+    "HttpPutResponseHopLimit": 1
+  }
+}
+```
+
+Addon Template은 Name을 unicorn-k8snode-addon-node로 바꿉니다. NodeGroup tag는 EC2 Instance에 자동 전파되지 않을 수 있으므로 채점 대상 Name은 반드시 Launch Template TagSpecifications에 넣습니다.
+
+AMI는 EKS 1.35용 AL2023 최적화 AMI를 사용합니다. 콘솔 NodeGroup에서 AMI Type을 선택한다면 Template의 ImageId를 생략합니다. Platform CMK Key Policy에는 Auto Scaling/EC2가 encrypted EBS를 생성하는 데 필요한 CreateGrant, GenerateDataKey, Encrypt/Decrypt 권한을 최소 범위로 허용합니다.
+
+### 7.6 Managed NodeGroup 두 개
+
+| 항목 | App | Addon |
+|---|---|---|
+| Name | unicorn-app-ng | unicorn-addon-ng |
+| Launch Template | App Template | Addon Template |
+| Subnet | Private a,b,c | Private a,b,c |
+| Instance | t3.medium | t3.medium |
+| Desired/Min | 2/2 | 1/1 |
+| Max | 3 이상 | 2 이상 |
+| Label | unicorn=app | unicorn=addon |
+
+App Node가 실제로 2개 이상 AZ에 분산됐는지 확인합니다. 한 AZ에 몰리면 Desired를 늘리거나 AZ별 NodeGroup으로 분산을 보장합니다.
+
+```bash
+kubectl get nodes -L unicorn,topology.kubernetes.io/zone
+```
+
+### 7.7 Addon을 Addon Node에 배치
+
+aws-node, kube-proxy, Pod Identity Agent, Fluent Bit 같은 DaemonSet은 예외입니다. CoreDNS, Metrics Server, AWS Load Balancer Controller, Prometheus, Grafana에는 다음을 설정합니다.
 
 ```yaml
+nodeSelector:
+  unicorn: addon
+```
+
+Addon taint dedicated=addon:NoSchedule를 사용한다면 각 Addon에 toleration도 추가합니다. CoreDNS를 먼저 교정하지 않고 taint를 적용하면 DNS가 Pending이 될 수 있습니다.
+
+```yaml
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: addon
+    effect: NoSchedule
+```
+
+### 7.8 Pod Identity 구성
+
+EKS Pod Identity Agent Add-on을 설치합니다.
+
+```bash
+aws eks create-addon --cluster-name unicorn-eks-cluster --addon-name eks-pod-identity-agent
+kubectl create namespace unicorn
+kubectl create serviceaccount unicorn-book-app-sa -n unicorn
+```
+
+Pod Identity Role Trust Policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Service": "pods.eks.amazonaws.com"},
+    "Action": ["sts:AssumeRole", "sts:TagSession"]
+  }]
+}
+```
+
+Permission Policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["dynamodb:PutItem", "dynamodb:GetItem"],
+    "Resource": "arn:aws:dynamodb:ap-northeast-2:ACCOUNT_ID:table/unicorn-concert-db"
+  }]
+}
+```
+
+```bash
+aws eks create-pod-identity-association --cluster-name unicorn-eks-cluster --namespace unicorn --service-account unicorn-book-app-sa --role-arn arn:aws:iam::ACCOUNT_ID:role/unicorn-book-app-role
+aws eks list-pod-identity-associations --cluster-name unicorn-eks-cluster --namespace unicorn
+```
+
+ServiceAccount에는 IRSA annotation을 넣지 않습니다. Pod Identity Association은 Kubernetes 객체가 아니라 EKS에 저장됩니다.
+
+### 7.9 Book App 전체 Manifest
+
+ECR의 scratch image에는 /bin/sh가 없습니다. 따라서 preStop exec sleep 대신 Kubernetes lifecycle sleep handler를 사용합니다.
+
+```yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: unicorn-book-app-pdb
+  namespace: unicorn
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: unicorn-book}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -306,6 +477,8 @@ metadata:
   namespace: unicorn
 spec:
   replicas: 2
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
   selector:
     matchLabels: {app: unicorn-book}
   template:
@@ -315,21 +488,35 @@ spec:
       serviceAccountName: unicorn-book-app-sa
       nodeSelector: {unicorn: app}
       terminationGracePeriodSeconds: 45
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: {app: unicorn-book}
       containers:
         - name: book
           image: ACCOUNT_ID.dkr.ecr.ap-northeast-2.amazonaws.com/unicorn-concert-app:v1.0.0
-          ports: [{containerPort: 8080}]
+          ports:
+            - {name: http, containerPort: 8080}
           env:
             - {name: AWS_REGION, value: ap-northeast-2}
             - {name: TABLE_NAME, value: unicorn-concert-db}
-          livenessProbe:
-            httpGet: {path: /health, port: 8080}
           readinessProbe:
-            httpGet: {path: /health, port: 8080}
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 15
+            periodSeconds: 10
           lifecycle:
             preStop:
-              exec:
-                command: ["/bin/sh", "-c", "sleep 15"]
+              sleep:
+                seconds: 15
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
 ---
 apiVersion: v1
 kind: Service
@@ -337,12 +524,65 @@ metadata:
   name: unicorn-book-app-svc
   namespace: unicorn
 spec:
+  type: ClusterIP
   selector: {app: unicorn-book}
-  ports: [{port: 80, targetPort: 8080}]
+  ports:
+    - {name: http, port: 80, targetPort: http}
 ```
 
-Ready/Available가 모두 2 이상이어야 합니다. Pod Identity Association은 unicorn-book-app-sa에 연결하고 DynamoDB 동작에 필요한 최소 권한만 부여합니다.
+ACCOUNT_ID를 바꾸고 적용합니다.
 
+```bash
+kubectl apply -f book-app.yaml
+kubectl rollout status deploy/unicorn-book-app-deploy -n unicorn --timeout=180s
+kubectl get deploy,svc,pod -n unicorn -o wide
+```
+
+### 7.10 내부 Health와 환경변수 테스트
+
+```bash
+kubectl run curl-test -n unicorn --rm -it --restart=Never --image=curlimages/curl -- curl -i http://unicorn-book-app-svc/health
+POD=$(kubectl get pod -n unicorn -l app=unicorn-book -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n unicorn $POD -c book -- printenv AWS_REGION TABLE_NAME
+```
+
+기대값은 health 200, ap-northeast-2, unicorn-concert-db입니다.
+
+### 7.11 mark.sh 기준 최종 검증
+
+```bash
+aws eks describe-cluster --name unicorn-eks-cluster --query 'cluster.[version,resourcesVpcConfig.endpointPublicAccess,resourcesVpcConfig.endpointPrivateAccess]' --output text
+aws eks describe-cluster --name unicorn-eks-cluster --query 'cluster.logging.clusterLogging[?enabled==true].types[]' --output text
+aws eks describe-cluster --name unicorn-eks-cluster --query 'cluster.encryptionConfig[].provider.keyArn' --output text
+
+kubectl get nodes -l unicorn=app -L topology.kubernetes.io/zone
+kubectl get nodes -l unicorn=addon
+aws ec2 describe-instances --filters Name=tag:Name,Values=unicorn-k8snode-app-node Name=instance-state-name,Values=running --query 'Reservations[].Instances[].[InstanceId,Placement.AvailabilityZone,PublicIpAddress]' --output table
+
+kubectl get deploy unicorn-book-app-deploy -n unicorn -o custom-columns='NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas' --no-headers
+kubectl get svc unicorn-book-app-svc -n unicorn -o custom-columns='NAME:.metadata.name,TYPE:.spec.type' --no-headers
+kubectl get deploy unicorn-book-app-deploy -n unicorn -o jsonpath='liveness={.spec.template.spec.containers[0].livenessProbe.httpGet.path} readiness={.spec.template.spec.containers[0].readinessProbe.httpGet.path} graceful={.spec.template.spec.terminationGracePeriodSeconds} preStop={.spec.template.spec.containers[0].lifecycle.preStop}'
+aws eks list-pod-identity-associations --cluster-name unicorn-eks-cluster --namespace unicorn --query 'associations[].serviceAccount' --output text
+```
+
+기대 핵심: 1.35 / false / true, 로그 5종, Encryption ARN, App Node 2대 이상, 2개 이상 AZ, Public IP 없음, Addon Node 1대, Ready/Available 2 이상, probe /health, graceful 45, preStop 존재, unicorn-book-app-sa 출력입니다.
+
+### 7.12 KST와 장애 진단
+
+Node timezone은 Launch Template user data 또는 사전 구성 AMI에서 timedatectl set-timezone Asia/Seoul을 적용합니다. 실행 중 수동 변경만 하면 Node 교체 시 사라집니다.
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| kubectl timeout | 외부 CloudShell 사용 | unicorn-mark VPC Environment 사용 |
+| Unauthorized | Access Entry 누락 | CloudShell Role 등록 |
+| Node NotReady | Endpoint/Route/Role | ECR/S3 Endpoint, NAT, Node Role 확인 |
+| App Node 한 AZ | ASG 배치 편중 | Desired 증가 또는 AZ별 NodeGroup |
+| EC2 Name 조회 0 | NodeGroup tag만 설정 | Launch Template Instance Name tag 추가 |
+| EBS KMS 불일치 | 기본 Template | Platform CMK BlockDeviceMappings 사용 |
+| CoreDNS Pending | taint toleration 누락 | CoreDNS nodeSelector/toleration 교정 |
+| DynamoDB AccessDenied | Association/Policy 오류 | Agent, SA, Role ARN 확인 |
+| preStop /bin/sh 실패 | scratch에 shell 없음 | lifecycle sleep 사용 |
+| Ready 1 | replica/probe 실패 | replicas, events, logs, health 확인 |
 ## 8. Lambda - 1점
 
 - Function: unicorn-get-booking-func
