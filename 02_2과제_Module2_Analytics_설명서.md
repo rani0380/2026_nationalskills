@@ -1129,3 +1129,257 @@ No data이면 Flink Role의 Kinesis GetRecords 계열 권한, Stream 이름/Regi
 | Flink SQL 결과 | Zeppelin 결과 |
 
 Console로 구축했더라도 마지막에는 반드시 2.20의 명령을 전부 실행합니다. 이 결과가 실제 채점 스크립트가 조회하는 값입니다.
+
+## 2.32 Kinesis 생성 명령 상세 설명
+
+### 실행 명령
+
+```bash
+aws configure set region ap-northeast-2
+
+aws kinesis create-stream \
+  --stream-name wsc2026-order-stream \
+  --stream-mode-details StreamMode=ON_DEMAND
+
+aws kinesis wait stream-exists \
+  --stream-name wsc2026-order-stream
+```
+
+### 명령별 기능
+
+| 명령/옵션 | 기능 |
+|---|---|
+| aws configure set region ap-northeast-2 | 이후 AWS CLI 명령의 기본 Region을 서울로 고정 |
+| aws kinesis create-stream | 새로운 Kinesis Data Stream 생성 |
+| --stream-name wsc2026-order-stream | 앱과 Flink가 참조할 정확한 Stream 이름 지정 |
+| --stream-mode-details StreamMode=ON_DEMAND | Shard 수를 직접 정하지 않고 트래픽에 따라 AWS가 용량을 관리 |
+| aws kinesis wait stream-exists | Stream이 ACTIVE가 될 때까지 CLI를 대기시켜 다음 작업의 타이밍 오류 방지 |
+
+create-stream 호출 직후에는 Stream이 CREATING일 수 있습니다. 이때 앱이 PutRecord를 실행하면 ResourceNotFound 또는 비활성 상태 오류가 발생할 수 있으므로 wait 명령을 사용합니다.
+
+### 이 과제에서 Kinesis의 역할
+
+```text
+POST /order
+  -> Flask가 주문 JSON 생성
+  -> kinesis.put_record()
+  -> wsc2026-order-stream에 Record 저장
+  -> Flink가 Record를 계속 읽음
+  -> 주문 수와 상품별 매출 계산
+```
+
+Kinesis는 메시지를 영구 업무 데이터처럼 조회하는 Database가 아니라, 발생하는 이벤트를 순서대로 전달하는 실시간 Stream입니다. Producer는 EC2 Flask 앱이고 Consumer는 Flink Studio Notebook입니다.
+
+### 앱의 PutRecord 동작
+
+지급 app.py는 다음 형태로 주문을 전송합니다.
+
+```python
+kinesis.put_record(
+    StreamName=STREAM_NAME,
+    Data=json.dumps(order),
+    PartitionKey=order["order_id"],
+)
+```
+
+| 인자 | 기능 |
+|---|---|
+| StreamName | 환경변수 STREAM_NAME의 wsc2026-order-stream 선택 |
+| Data | 주문 Dictionary를 JSON 문자열로 직렬화해 Record Payload로 저장 |
+| PartitionKey | 같은 Key의 Record를 같은 Shard로 보내고 분산 기준으로 사용 |
+| order_id | 매 주문마다 UUID가 달라 Record가 여러 Partition에 고르게 분산될 수 있음 |
+
+Data 최대 크기와 처리량에는 Kinesis 제한이 있으나 이 과제의 작은 주문 JSON에는 문제가 없습니다. IAM Role에는 kinesis:PutRecord 권한이 반드시 필요합니다.
+
+### ON_DEMAND를 사용하는 이유
+
+| ON_DEMAND | PROVISIONED |
+|---|---|
+| Shard 수를 직접 계산하지 않음 | Shard 수를 직접 지정 |
+| 가변적인 실습 트래픽에 편리 | 예측 가능한 대규모 트래픽에 세밀한 제어 |
+| 생성 명령에 --shard-count 불필요 | create-stream 시 Shard 수 필요 |
+| 채점 기대값 ON_DEMAND | 이 과제에서는 오답 |
+
+### 생성 결과 확인
+
+```bash
+aws kinesis describe-stream-summary \
+  --stream-name wsc2026-order-stream \
+  --query 'StreamDescriptionSummary.[StreamName,StreamStatus,StreamModeDetails.StreamMode]' \
+  --output table
+```
+
+기대값:
+
+```text
+wsc2026-order-stream    ACTIVE    ON_DEMAND
+```
+
+### 실제 Record 생성
+
+```bash
+ALB_DNS=$(aws elbv2 describe-load-balancers \
+  --names wsc2026-analytics-alb \
+  --query 'LoadBalancers[0].DNSName' --output text)
+
+curl -i -X POST "http://$ALB_DNS/order"
+curl -i -X POST "http://$ALB_DNS/orders/generate"
+```
+
+/order는 주문 1건, /orders/generate는 주문 10건을 생성합니다. HTTP 201과 주문 JSON이 반환되어야 합니다.
+
+### Kinesis 장애 진단
+
+| 증상 | 확인 |
+|---|---|
+| ResourceNotFoundException | Region과 Stream 이름 확인 |
+| /order HTTP 500 | EC2 Role의 PutRecord 권한과 앱 로그 확인 |
+| Stream은 Active지만 Incoming data 0 | 앱 환경변수 STREAM_NAME/AWS_REGION 확인 |
+| AccessDeniedException | wsc2026-alaytics-ec2-role의 Inline Policy 확인 |
+| PROVISIONED로 표시 | Stream Mode가 채점 기준과 다르므로 ON_DEMAND로 다시 구성 |
+
+## 2.33 Flink SQL 기능 상세 설명
+
+### Flink의 역할
+
+Flink는 Kinesis에 계속 들어오는 주문 Record를 실시간으로 읽어 SQL Table처럼 분석합니다. S3의 완성된 파일을 한 번 조회하는 방식과 달리 새 주문이 들어올 때마다 결과가 갱신됩니다.
+
+```text
+Kinesis JSON Record
+  -> Flink Kinesis Connector
+  -> order_stream 논리 Table
+  -> event_time을 Timestamp로 변환
+  -> SQL 집계
+  -> Notebook 결과 갱신
+```
+
+### Source Table 생성 SQL
+
+```sql
+%flink.ssql
+
+CREATE TABLE order_stream (
+  order_id STRING,
+  product_name STRING,
+  price BIGINT,
+  quantity INT,
+  event_time STRING,
+  event_ts AS TO_TIMESTAMP(event_time),
+  WATERMARK FOR event_ts AS event_ts - INTERVAL '5' SECOND
+) WITH (
+  'connector' = 'kinesis',
+  'stream' = 'wsc2026-order-stream',
+  'aws.region' = 'ap-northeast-2',
+  'scan.stream.initpos' = 'LATEST',
+  'format' = 'json'
+);
+```
+
+### SQL 요소별 기능
+
+| SQL 요소 | 기능 |
+|---|---|
+| %flink.ssql | Zeppelin에서 Flink Streaming SQL Interpreter 사용 |
+| CREATE TABLE order_stream | 물리 DB Table이 아니라 Kinesis를 읽는 논리 Source Table 정의 |
+| order_id STRING | UUID 주문 식별자 |
+| product_name STRING | Laptop, Mouse 등 상품명 |
+| price BIGINT | 원 단위 가격이므로 큰 정수형 사용 |
+| quantity INT | 주문 수량 |
+| event_time STRING | 앱이 보내는 원본 시간 문자열 |
+| event_ts AS TO_TIMESTAMP(event_time) | 문자열을 Flink Timestamp 계산 열로 변환 |
+| WATERMARK ... 5 SECOND | 최대 5초 늦게 도착하는 이벤트를 허용하는 Event Time 기준 |
+| connector = kinesis | Source가 Kinesis Data Stream임을 지정 |
+| stream | 읽을 Stream 이름 |
+| aws.region | Kinesis가 존재하는 서울 Region |
+| scan.stream.initpos = LATEST | Table 실행 시점 이후 들어오는 새 Record부터 읽음 |
+| format = json | Kinesis Data를 JSON 필드로 역직렬화 |
+
+LATEST를 사용하면 Table을 만든 전에 전송한 주문은 보이지 않을 수 있습니다. CREATE TABLE 실행 후 /orders/generate를 다시 호출해야 합니다. 과거 Record까지 읽어야 할 때는 실습 목적으로 TRIM_HORIZON을 사용할 수 있지만, 채점 구성에서는 명세와 Notebook 설정을 우선합니다.
+
+### 최근 1분 주문 수
+
+```sql
+%flink.ssql
+
+SELECT COUNT(*) AS order_count
+FROM order_stream
+WHERE event_ts > CURRENT_TIMESTAMP - INTERVAL '1' MINUTE;
+```
+
+이 쿼리는 현재 시각을 기준으로 최근 1분 범위에 들어오는 주문 수를 계산합니다.
+
+| 구문 | 기능 |
+|---|---|
+| COUNT(*) | 조건에 맞는 주문 Record 개수 |
+| CURRENT_TIMESTAMP | Flink가 처리 중인 현재 시각 |
+| INTERVAL '1' MINUTE | 현재 시각에서 1분 전 경계 생성 |
+| WHERE event_ts > ... | 최근 1분 데이터만 필터링 |
+
+장시간 안정적인 Window 집계를 만들 때는 TUMBLE/HOP Window를 사용하는 것이 일반적이지만, 이 과제에서는 제시된 최근 1분 결과 확인이 목적입니다.
+
+### 상품별 누적 매출
+
+```sql
+%flink.ssql
+
+SELECT
+  product_name,
+  SUM(price * quantity) AS total_revenue
+FROM order_stream
+GROUP BY product_name;
+```
+
+| 구문 | 기능 |
+|---|---|
+| price * quantity | 주문 한 건의 매출 계산 |
+| SUM(...) | 상품별 매출 누적 |
+| GROUP BY product_name | Laptop, Mouse 등 상품별로 결과 분리 |
+| total_revenue | 계산 결과 Column 이름 |
+
+예를 들어 Laptop 가격이 1,200,000원이고 quantity가 2이면 해당 Record는 2,400,000원이 누적됩니다.
+
+### Flink 실행 순서
+
+1. Studio Notebook을 Ready/Running 상태로 시작합니다.
+2. CREATE TABLE order_stream을 실행합니다.
+3. ALB의 /orders/generate를 3~5회 호출합니다.
+4. 최근 1분 주문 수 SQL을 실행합니다.
+5. 상품별 누적 매출 SQL을 실행합니다.
+6. 결과가 갱신되는지 확인합니다.
+
+### Flink No Data 진단
+
+| 증상 | 원인/해결 |
+|---|---|
+| Table 생성은 성공하지만 0건 | LATEST 이후 새 주문을 생성하지 않음 |
+| Kinesis AccessDenied | Flink Role에 GetRecords, GetShardIterator, ListShards 권한 추가 |
+| Stream not found | stream 이름과 aws.region 확인 |
+| JSON Parse 오류 | app.py Record 필드와 CREATE TABLE Schema 비교 |
+| event_ts가 NULL | event_time 형식 yyyy-MM-dd HH:mm:ss 확인 |
+| Notebook이 열리지 않음 | Application Status, Studio Runtime, Service Role 확인 |
+| 쿼리가 계속 Running | Streaming SQL은 새 Record를 계속 기다리므로 정상일 수 있음 |
+
+## 2.34 Kinesis와 Flink 연결 최종 점검
+
+```bash
+aws kinesis describe-stream-summary \
+  --stream-name wsc2026-order-stream \
+  --query 'StreamDescriptionSummary.[StreamStatus,StreamModeDetails.StreamMode]' \
+  --output text
+
+aws kinesisanalyticsv2 describe-application \
+  --application-name wsc2026-analytics-flink \
+  --query 'ApplicationDetail.[ApplicationStatus,RuntimeEnvironment,ServiceExecutionRole]' \
+  --output table
+
+curl -s -X POST "http://$ALB_DNS/orders/generate"
+```
+
+확인 순서:
+
+- Kinesis는 ACTIVE / ON_DEMAND이다.
+- POST 요청이 HTTP 201을 반환한다.
+- Kinesis Monitoring의 Incoming records가 증가한다.
+- Flink Role이 같은 Stream을 읽을 수 있다.
+- CREATE TABLE 실행 후 새 주문을 넣었다.
+- 두 분석 SQL에서 결과가 표시된다.
