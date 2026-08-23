@@ -136,6 +136,117 @@ done
 | Encryption | App CMK |
 | PITR / 삭제 방지 | ENABLED / true |
 
+### 5.1 Stream DynamoDB TTL·필드 구성 보충사항
+
+> **적용 범위 주의:** 현재 첨부된 07_1 Release Candidate 채점표는 unicorn-concert-db의 created_at을 String(S)으로 직접 조회하며 source-db나 TTL을 검사하지 않습니다. 따라서 기존 RC 채점에 응시한다면 앞의 5번 표대로 created_at을 ISO 8601 String으로 저장합니다. 아래 내용은 별도로 전달된 **Stream DynamoDB / source-db 추가 공지**가 적용되는 버전에서 사용합니다.
+
+#### created_at과 TTL 데이터 타입
+
+DynamoDB TTL은 TTL 대상으로 지정한 Attribute에 Unix Epoch **초 단위 Number**가 있어야 동작합니다. 따라서 Stream 과제에서 created_at을 Number로 사용하도록 허용한 경우 Epoch Time을 저장해도 됩니다.
+
+| 사용 목적 | 권장 Attribute | DynamoDB 타입 | 예시 |
+|---|---|---|---|
+| 생성 시각 기록 | created_at | Number 또는 공지에서 지정한 타입 | 1780182059 |
+| TTL 만료 시각 | expires_at | Number | 1780268459 |
+| 사람이 읽는 시각 | created_at_iso 추가 가능 | String | 2026-05-31T20:00:59+09:00 |
+
+TTL Attribute 값은 단순 생성 시각이 아니라 **만료되어야 하는 미래 시각의 Epoch 초**여야 합니다. created_at을 TTL Attribute로 직접 지정하고 현재 생성 시각을 넣으면 만료 대상으로 바로 판정될 수 있으므로, 특별한 요구가 없다면 expires_at을 별도로 두는 편이 안전합니다.
+
+Epoch 값 생성 예시:
+
+```bash
+CREATED_AT=$(date +%s)
+EXPIRES_AT=$((CREATED_AT + 86400))  # 24시간 후
+echo "$CREATED_AT $EXPIRES_AT"
+```
+
+TTL 활성화:
+
+```bash
+aws dynamodb update-time-to-live \
+  --table-name source-db \
+  --time-to-live-specification \
+  "Enabled=true,AttributeName=expires_at"
+
+aws dynamodb describe-time-to-live \
+  --table-name source-db \
+  --query TimeToLiveDescription
+```
+
+기대 상태는 ENABLED 또는 활성화 진행 중인 ENABLING입니다.
+
+#### 필수 필드와 추가 필드
+
+과제지에 명시된 필드는 모두 반드시 포함합니다. 구현이나 TTL 처리를 위해 expires_at, created_at_iso 같은 필드를 추가하는 것은 가능합니다.
+
+| 구분 | 처리 기준 |
+|---|---|
+| 과제지 필수 필드 | 누락 금지 |
+| created_at | String 고정 요구가 없으면 Number Epoch 사용 가능 |
+| expires_at | TTL이 필요하면 Number Epoch 초로 추가 |
+| KST 문자열 | 반드시 필요하지 않으며 Epoch 또는 UTC 사용 가능 |
+| 추가 필드 | 필수 필드를 방해하지 않는 범위에서 허용 |
+
+Epoch Time은 Timezone과 무관한 절대 시각이므로 KST 문자열로 변환할 필요가 없습니다. 화면 표시가 필요할 때만 애플리케이션에서 KST로 변환합니다.
+
+#### source-db PutItem은 모든 필드를 한 번에 입력
+
+source-db의 Item은 AWS CLI put-item을 호출할 때 과제지의 필수 필드와 시간 필드를 모두 포함하여 저장합니다. PutItem 이후 별도 Lambda가 실행되어 created_at이나 expires_at을 추가하는 구조가 아닙니다.
+
+예시:
+
+```bash
+CREATED_AT=$(date +%s)
+EXPIRES_AT=$((CREATED_AT + 86400))
+
+ITEM=$(jq -n \
+  --arg record_id "SRC-001" \
+  --arg payload "sample-data" \
+  --argjson created_at "$CREATED_AT" \
+  --argjson expires_at "$EXPIRES_AT" \
+  '{
+    record_id: {S: $record_id},
+    payload: {S: $payload},
+    created_at: {N: ($created_at | tostring)},
+    expires_at: {N: ($expires_at | tostring)}
+  }')
+
+aws dynamodb put-item \
+  --table-name source-db \
+  --item "$ITEM"
+```
+
+record_id와 payload는 예시이므로 실제 과제지에 제시된 필드명으로 교체하고, 필수 필드를 빠짐없이 ITEM에 추가합니다.
+
+저장 결과 확인:
+
+```bash
+aws dynamodb get-item \
+  --table-name source-db \
+  --key '{"record_id":{"S":"SRC-001"}}' \
+  --consistent-read
+```
+
+#### 잘못된 구성과 올바른 구성
+
+| 잘못된 구성 | 올바른 구성 |
+|---|---|
+| TTL Attribute가 String | Epoch 초 Number |
+| created_at에 현재 Epoch를 넣고 같은 필드를 TTL로 사용 | 별도 expires_at에 미래 Epoch 저장 |
+| PutItem 후 Lambda가 created_at을 추가 | 최초 PutItem에 모든 필드 포함 |
+| 과제지 필수 필드를 일부 생략 | 필수 필드 전체 + 필요한 추가 필드 |
+| Epoch를 KST 숫자로 별도 보정 | Epoch는 그대로 저장, 표시할 때만 KST 변환 |
+
+#### 버전별 최종 선택
+
+| 과제 버전 | created_at 처리 |
+|---|---|
+| 현재 07_1 RC PDF·채점표 | unicorn-concert-db에 String(S), ISO 8601 |
+| source-db Stream 추가 공지 적용 버전 | Number(N) Epoch 허용, 모든 필드를 CLI PutItem에 포함 |
+| TTL이 실제 요구되는 경우 | 미래 만료 Epoch를 가진 Number Attribute 지정 |
+
+이 구분을 지키면 기존 RC의 created_at.S 검사와 최신 Stream DynamoDB 공지를 서로 혼동하지 않을 수 있습니다.
+
 ## 6. ECR - 1점
 
 Repository 이름은 unicorn-concert-app입니다. 채점은 단순히 이미지가 보이는지만 확인하지 않고 Repository 설정, 두 tag, v1.0.0 스캔 이력, 취약점 개수를 함께 검사합니다.
