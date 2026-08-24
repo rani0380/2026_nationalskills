@@ -74,7 +74,7 @@ for (const link of document.querySelectorAll("[data-doc-link]")) {
   }
 }
 
-fetch(encodeURI(selected.file))
+fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
   .then((response) => {
     if (!response.ok) {
       throw new Error(`문서를 불러오지 못했습니다. (${response.status})`);
