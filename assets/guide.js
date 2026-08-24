@@ -29,14 +29,9 @@ const docs = {
     file: "02_2과제_내일변경_대응센터.md",
   },
   task02second: {
-    title: "제2과제 RC 콘솔 + CLI 상세 풀이",
-    description: "최신 Release Candidate의 Workflow, Real-time Data Analytics, MSK를 22.5점 채점 순서대로 구성한 실전 풀이입니다.",
-    file: "02_2과제_1등_상세풀이.md",
-  },
-  task02extra: {
-    title: "제2과제 추가 예상문제",
-    description: "추가 출제 가능성이 높은 Cloud Operations Automation을 문제지·콘솔·CLI·예상 채점표 형식으로 구성한 비공식 대비 자료입니다.",
-    file: "02_2과제_추가예상문제_운영자동화.md",
+    title: "제2과제 실제 출제본 공지·풀이",
+    description: "8월 24일 실제 출제 공지를 반영한 유효 모듈, 삭제 모듈, CDN KST 및 CloudShell 필수 점검 안내입니다.",
+    file: "02_2과제_실제출제본_공지및풀이.md",
   },
   task02m1: {
     title: "02_2 Module 1 Workflow 설명서",
@@ -100,7 +95,7 @@ function mountScoreSubmissionForm(activeTaskKey) {
   const baseConfig = window.SCORE_SUBMISSION_CONFIG || {};
   const taskNames = {
     task02first: "02_1과제_1등",
-    task02second: "02_2과제_1등",
+    task02second: "02_2과제_실제출제본",
     task02m1: "02_2과제_Module1_Workflow",
     task02m2: "02_2과제_Module2_Analytics",
     task02m3: "02_2과제_Module3_EventHandling",
@@ -166,7 +161,7 @@ bash ~/mark.sh</code></pre>
     section.querySelector(".score-submit__download")?.remove();
   }
   const moduleDownloads = {
-    task02second: ["module1.zip", "module2.zip", "module3.zip", "module4.zip"],
+    task02second: ["module1.zip", "module2.zip"],
     task02m1: ["module1.zip"],
     task02m2: ["module2.zip"],
     task02m3: ["module3.zip"],
