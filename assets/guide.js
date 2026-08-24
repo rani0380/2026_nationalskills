@@ -31,7 +31,7 @@ const docs = {
   task02second: {
     title: "제2과제 실제 출제본 공지·풀이",
     description: "8월 24일 실제 출제 공지를 반영한 유효 모듈, 삭제 모듈, CDN KST 및 CloudShell 필수 점검 안내입니다.",
-    file: "02_2과제_실제출제본_공지및풀이.md",
+    file: "task02-actual-exam.md",
   },
   task02m1: {
     title: "02_2 Module 1 Workflow 설명서",
