@@ -23,6 +23,37 @@
     export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
     export NUM=<비번호>
 
+
+## 공식 채점 스크립트
+
+공식 공지 제공본입니다. 실행 전에 vim으로 확인합니다.
+
+    wget -O 1-workflow.sh https://notice-pg-qw7w2t3wk-asdf83xc4hc3-x28a3b8v1q91sr.s3.ap-northeast-2.amazonaws.com/2_s233asi43x/day2-1_v1.sh
+    wget -O 2-realtime.sh https://notice-pg-qw7w2t3wk-asdf83xc4hc3-x28a3b8v1q91sr.s3.ap-northeast-2.amazonaws.com/2_s233asi43x/day2-2_v1.sh
+    wget -O 3-msk.sh https://notice-pg-qw7w2t3wk-asdf83xc4hc3-x28a3b8v1q91sr.s3.ap-northeast-2.amazonaws.com/2_s233asi43x/day2-3_v1.sh
+    wget -O 4-cdn.sh https://notice-pg-qw7w2t3wk-asdf83xc4hc3-x28a3b8v1q91sr.s3.ap-northeast-2.amazonaws.com/2_s233asi43x/day2-4_v2.sh
+    wget -O 5-legacy.sh https://notice-pg-qw7w2t3wk-asdf83xc4hc3-x28a3b8v1q91sr.s3.ap-northeast-2.amazonaws.com/2_s233asi43x/day2-5_v1.sh
+    chmod 755 1-workflow.sh 2-realtime.sh 3-msk.sh 4-cdn.sh 5-legacy.sh
+
+    vim 1-workflow.sh
+    vim 2-realtime.sh
+    vim 3-msk.sh
+    vim 4-cdn.sh
+    vim 5-legacy.sh
+
+    bash 1-workflow.sh
+    bash 2-realtime.sh
+    bash 3-msk.sh
+    bash 4-cdn.sh
+    bash 5-legacy.sh
+
+주의:
+- Workflow는 시작 시 S3와 DynamoDB가 비어 있어야 자동 시험합니다.
+- 실행 전 본인 AWS Account를 확인합니다.
+- 스크립트를 수정하지 말고 출력에 맞춰 리소스를 수정합니다.
+- CDN 4-3은 공지의 외부 채점 페이지에서 수동 확인합니다.
+
+
 ---
 ## Module 1. Workflow
 
@@ -1134,19 +1165,18 @@ Distribution Comment는 wsk2026-cf로 입력합니다.
 #### 7단계 — Behavior 두 개
 
 Default behavior:
-- Origin: S3
-- Viewer protocol: Redirect HTTP to HTTPS
-- Allowed methods: GET, HEAD
-- Cache policy: CachingOptimized
-
-추가 Behavior:
-- Path pattern: /now
 - Origin: API Gateway
 - Viewer protocol: HTTPS only
 - Allowed methods에 POST 포함
 - Cache policy: CachingDisabled
 - Origin request policy: AllViewerExceptHostHeader
 
+추가 Behavior:
+- Path pattern: /static/*
+- Origin: S3(OAI)
+- Viewer protocol: Redirect HTTP to HTTPS
+- Allowed methods: GET, HEAD
+- Cache policy: CachingOptimized
 배포 상태가 Deployed가 될 때까지 기다립니다.
 
 #### 8단계 — 최종 시험과 3분 갱신
@@ -1499,7 +1529,7 @@ Lambda 패키징:
     aws ecs describe-services --cluster shgold-cluster --services shgold-service --query 'services[0].{desired:desiredCount,running:runningCount}'
     aws rds describe-db-clusters --db-cluster-identifier shgold-mysql --query 'DBClusters[0].{Version:EngineVersion,Status:Status,Endpoint:Endpoint}'
 
-모든 API는 1초 미만이 목표입니다. ECS 2개 이상, /healthz, Aurora 연결 재사용, id PK 조회, Secrets Manager 반복 호출 방지를 확인합니다.
+과제 목표는 모든 API 1초 미만입니다. 공식 채점 스크립트는 POST 2초 이내, GET 5초 내 성공을 우선 확인하고 GET 10회의 시간을 출력하므로 1초 목표까지 튜닝합니다. ECS 2개 이상, /healthz, Aurora 연결 재사용, id PK 조회, Secrets Manager 반복 호출 방지를 확인합니다.
 
 ---
 
