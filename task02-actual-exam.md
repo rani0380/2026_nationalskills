@@ -735,6 +735,180 @@ aws dynamodb scan \
 ---
 
 
+
+### 3.12 Kafka CLI 사용법 — IAM 인증
+
+Kafka CLI는 MSK와 같은 VPC의 Producer EC2 또는 Bastion에서 실행합니다. CloudShell은 기본적으로 Private MSK Broker에 네트워크로 연결되지 않으므로 Topic 작업은 EC2의 SSM Session 안에서 수행합니다.
+
+#### 1) Producer EC2 접속과 Java 확인
+
+    export AWS_DEFAULT_REGION=ap-northeast-1
+    aws ssm start-session --target <PRODUCER_INSTANCE_ID>
+
+SSM 접속 후:
+
+    sudo dnf install -y java-17-amazon-corretto-headless wget tar
+    java -version
+
+Broker 버전과 맞춰 Kafka 3.6.0 CLI를 설치합니다.
+
+    cd /opt
+    sudo wget -q https://archive.apache.org/dist/kafka/3.6.0/kafka_2.13-3.6.0.tgz
+    sudo tar -xzf kafka_2.13-3.6.0.tgz
+    sudo ln -sfn /opt/kafka_2.13-3.6.0 /opt/kafka
+    sudo mkdir -p /opt/kafka/libs
+    sudo chown -R ec2-user:ec2-user /opt/kafka_2.13-3.6.0 /opt/kafka
+
+#### 2) AWS IAM 인증 플러그인
+
+    cd /opt/kafka/libs
+    wget -q https://github.com/aws/aws-msk-iam-auth/releases/download/v2.3.2/aws-msk-iam-auth-2.3.2-all.jar
+
+    cat > /opt/kafka/config/client.properties <<'EOF'
+    security.protocol=SASL_SSL
+    sasl.mechanism=AWS_MSK_IAM
+    sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+    sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+    EOF
+
+    export CLASSPATH=/opt/kafka/libs/aws-msk-iam-auth-2.3.2-all.jar
+    grep -v '^#' /opt/kafka/config/client.properties
+
+EC2 Instance Role에는 최소한 kafka-cluster:Connect, DescribeCluster, DescribeTopic, CreateTopic, ReadData, WriteData, AlterGroup, DescribeGroup 권한이 있어야 합니다. Resource ARN은 실제 Cluster, Topic, Group으로 제한합니다.
+
+#### 3) IAM Bootstrap Broker 조회
+
+CloudShell 또는 EC2에서 Cluster ARN을 확인합니다.
+
+    export AWS_DEFAULT_REGION=ap-northeast-1
+    export CLUSTER_ARN=$(aws kafka list-clusters-v2 \
+      --cluster-name-filter wsc2026-msk-cluster \
+      --query 'ClusterInfoList[0].ClusterArn' --output text)
+
+    export BOOTSTRAP_SERVERS=$(aws kafka get-bootstrap-brokers \
+      --cluster-arn "$CLUSTER_ARN" \
+      --query BootstrapBrokerStringSaslIam --output text)
+
+    echo "$CLUSTER_ARN"
+    echo "$BOOTSTRAP_SERVERS"
+
+BootstrapBrokerString 또는 TLS 문자열이 아니라 반드시 BootstrapBrokerStringSaslIam 값과 9098 포트를 사용합니다.
+
+#### 4) Topic 생성
+
+    /opt/kafka/bin/kafka-topics.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --command-config /opt/kafka/config/client.properties \
+      --create --if-not-exists \
+      --topic wsc2026-sensor-raw \
+      --partitions 3 --replication-factor 2
+
+    /opt/kafka/bin/kafka-topics.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --command-config /opt/kafka/config/client.properties \
+      --create --if-not-exists \
+      --topic wsc2026-sensor-alert \
+      --partitions 1 --replication-factor 2
+
+채점 확인:
+
+    /opt/kafka/bin/kafka-topics.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --command-config /opt/kafka/config/client.properties \
+      --describe --topic wsc2026-sensor-raw
+
+    /opt/kafka/bin/kafka-topics.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --command-config /opt/kafka/config/client.properties \
+      --describe --topic wsc2026-sensor-alert
+
+raw는 PartitionCount 3, ReplicationFactor 2이고 alert는 PartitionCount 1, ReplicationFactor 2여야 합니다.
+
+#### 5) Console Producer로 시험 메시지 발행
+
+    /opt/kafka/bin/kafka-console-producer.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --producer.config /opt/kafka/config/client.properties \
+      --topic wsc2026-sensor-raw
+
+실행 후 한 줄짜리 JSON을 입력하고 Enter를 누릅니다.
+
+    {"sensorId":"SENSOR-CLI-001","timestamp":"2026-08-24T11:30:00+09:00","temperature":82.4,"humidity":48.7,"location":"factory-a"}
+
+입력이 끝나면 Ctrl+C로 종료합니다. sensorId가 DynamoDB PK이고 timestamp가 SK이므로 두 값은 빈 문자열이면 안 됩니다.
+
+파일을 파이프로 전송할 수도 있습니다.
+
+    printf '%s\n' '{"sensorId":"SENSOR-CLI-002","timestamp":"2026-08-24T11:31:00+09:00","temperature":75.5,"humidity":45.2,"location":"factory-b"}' |
+      /opt/kafka/bin/kafka-console-producer.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --producer.config /opt/kafka/config/client.properties \
+      --topic wsc2026-sensor-raw
+
+#### 6) Console Consumer로 메시지 확인
+
+새 터미널에서 실행합니다.
+
+    export CLASSPATH=/opt/kafka/libs/aws-msk-iam-auth-2.3.2-all.jar
+
+    /opt/kafka/bin/kafka-console-consumer.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --consumer.config /opt/kafka/config/client.properties \
+      --topic wsc2026-sensor-raw \
+      --from-beginning \
+      --max-messages 5 \
+      --property print.partition=true \
+      --property print.offset=true
+
+실시간 확인만 할 때는 --from-beginning과 --max-messages를 빼고 실행한 뒤 Ctrl+C로 종료합니다.
+
+alert Topic 확인:
+
+    /opt/kafka/bin/kafka-console-consumer.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --consumer.config /opt/kafka/config/client.properties \
+      --topic wsc2026-sensor-alert \
+      --from-beginning --max-messages 5
+
+#### 7) Consumer Group과 Lag 확인
+
+    /opt/kafka/bin/kafka-consumer-groups.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --command-config /opt/kafka/config/client.properties \
+      --list
+
+    /opt/kafka/bin/kafka-consumer-groups.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --command-config /opt/kafka/config/client.properties \
+      --describe --group <GROUP_ID>
+
+LAG가 계속 증가하면 Lambda Event Source Mapping 상태, Lambda 오류, IAM 권한, VPC SG를 함께 확인합니다. Lambda managed MSK trigger의 내부 Group ID는 자동 생성될 수 있으므로 먼저 --list 결과에서 찾습니다.
+
+#### 8) 제공 Producer 실행
+
+    cd ~/day2_release_files/module3
+    chmod +x app
+    export BOOTSTRAP_SERVERS="$BOOTSTRAP_SERVERS"
+    export TOPIC_RAW=wsc2026-sensor-raw
+    ./app
+
+재부팅 뒤에도 자동 실행되도록 systemd에 같은 두 환경변수를 넣고 enable --now 합니다. 로그 확인:
+
+    sudo systemctl status sensor-producer --no-pager
+    sudo journalctl -u sensor-producer -n 100 --no-pager
+
+#### 9) 자주 발생하는 오류
+
+| 오류 | 원인과 해결 |
+|---|---|
+| Connection to node could not be established | EC2가 MSK SG의 TCP 9098에 접근 가능한지 확인 |
+| Access denied | EC2 Role의 kafka-cluster 권한과 Cluster/Topic/Group ARN 확인 |
+| Class IAMClientCallbackHandler could not be found | CLASSPATH와 IAM auth JAR 경로 확인 |
+| TimeoutException | Private DNS, Broker 상태, 올바른 IAM Bootstrap 주소 확인 |
+| TopicExistsException | 정상입니다. --if-not-exists 사용 |
+| Replication factor larger than available brokers | Broker가 2개 모두 Active인지 확인 |
+
+
 ## Module 4. CDN Service Setup (3점)
 
 고정값: us-east-1, Comment wsk2026-cf, S3 wsk2026-encrypted-data-<비번호>, HTTP API wsk2026-api, Lambda wsk2026-now. 단일 CloudFront 주소에서 POST /now와 GET /static/image.png가 동작해야 합니다.
