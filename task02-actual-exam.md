@@ -450,6 +450,112 @@ systemctl is-enabled app
 
 
 
+
+### 3.0-A 초보자용 8단계 구축 순서
+
+#### 실행 장소 구분
+
+| 장소 | 작업 |
+|---|---|
+| AWS CloudShell | AWS 리소스 생성·조회 |
+| Producer EC2의 SSM Session | Kafka CLI, Topic, 시험 메시지, 제공 app |
+| Lambda Console | 함수·환경변수·Trigger·로그 |
+
+꺾쇠로 표시된 값은 본인이 만든 실제 ID로 바꿉니다. NUM을 쓰기 전에는 export NUM=<비번호>를 실행합니다.
+
+#### 1. CloudShell 준비
+
+    aws configure set region ap-northeast-1
+    export NUM=<본인_비번호>
+    aws sts get-caller-identity
+    echo "$NUM"
+
+Account와 비번호가 출력되면 정상입니다.
+
+#### 2. 네트워크
+
+msk-vpc와 2AZ Public/Private Subnet을 만든 뒤 Public은 IGW, Private은 NAT Route를 연결합니다. MSK와 Producer는 Private에 둡니다. MSK SG는 Producer SG에서 오는 TCP 9098을 허용합니다. NAT가 없으면 SSM·다운로드·AWS API가 실패할 수 있습니다.
+
+#### 3. DynamoDB·S3·SNS·MSK
+
+3.4 명령을 실행한 뒤 확인합니다.
+
+    aws dynamodb wait table-exists --table-name wsc2026-sensor-data
+    aws dynamodb describe-table --table-name wsc2026-sensor-data \
+      --query 'Table.{Status:TableStatus,Keys:KeySchema}' --output table
+
+ACTIVE, sensorId HASH(PK), timestamp RANGE(SK)가 정상입니다. MSK는 3.5 값으로 만든 뒤 State가 ACTIVE일 때만 다음 단계로 이동합니다.
+
+#### 4. Kafka Topic
+
+Producer EC2에 SSM 접속 후 3.12의 Java, Kafka, IAM Auth JAR, client.properties를 설치합니다. raw는 Partition 3/Replication 2, alert는 Partition 1/Replication 2로 생성합니다.
+
+#### 5. Lambda와 Trigger
+
+두 함수는 정확한 이름, Python 3.14, Private Subnet/SG, 3.8의 환경변수로 만듭니다. raw→sensor consumer, alert→alert consumer Trigger를 연결합니다.
+
+    aws lambda list-event-source-mappings \
+      --query 'EventSourceMappings[*].{Function:FunctionArn,Topics:Topics,State:State}' \
+      --output table
+
+두 State가 모두 Enabled여야 합니다.
+
+#### 6. 실제 KST 메시지 시험
+
+고정 샘플 시각을 쓰지 않고 메시지를 보낼 때마다 NOW를 다시 계산합니다.
+
+    NOW=$(TZ=Asia/Seoul date --iso-8601=seconds)
+    printf '{"sensorId":"SENSOR-NORMAL-001","timestamp":"%s","temperature":75.5,"humidity":45.2,"location":"factory-a"}\n' "$NOW" |
+      /opt/kafka/bin/kafka-console-producer.sh \
+      --bootstrap-server "$BOOTSTRAP_SERVERS" \
+      --producer.config /opt/kafka/config/client.properties \
+      --topic wsc2026-sensor-raw
+    echo "$NOW"
+
+ALERT 시험은 같은 명령에서 sensorId를 SENSOR-ALERT-001, temperature를 82.4로 바꿉니다.
+
+#### 7. 채점 결과 확인
+
+    aws dynamodb scan \
+      --table-name wsc2026-sensor-data \
+      --max-items 3 \
+      --projection-expression 'sensorId,#ts,#st' \
+      --expression-attribute-names '{"#ts":"timestamp","#st":"status"}' \
+      --query 'Items[*].{sensorId:sensorId.S,timestamp:timestamp.S,status:status.S}' \
+      --output table
+
+합격 조건:
+- timestamp라는 고정 문자가 아니라 실제 생성 시각.
+- YYYY-MM-DDTHH:mm:ss+09:00 형식.
+- 정상은 NORMAL, 82.4는 ALERT.
+- 메시지를 새로 만들 때 Timestamp도 달라짐.
+
+    aws s3 ls "s3://wsc2026-sensor-alert-bucket-$NUM/alert/" --recursive
+    aws logs tail /aws/lambda/wsc2026-sensor-consumer --since 10m
+    aws logs tail /aws/lambda/wsc2026-sensor-alert-consumer --since 10m
+
+#### 8. 제공 Producer 상시 실행
+
+수동 시험이 성공한 뒤 실행합니다.
+
+    sudo systemctl enable --now sensor-producer
+    sudo systemctl is-enabled sensor-producer
+    sudo systemctl is-active sensor-producer
+    sudo journalctl -u sensor-producer -n 50 --no-pager
+
+enabled, active, SENSOR 로그가 계속 증가하면 정상입니다.
+
+| 증상 | 먼저 확인 |
+|---|---|
+| Kafka timeout | TCP 9098 SG, IAM Bootstrap 주소, 같은 VPC |
+| Access denied | EC2 Role의 kafka-cluster 권한 |
+| Trigger 미활성 | Lambda VPC/SG, Topic, IAM |
+| DynamoDB 비어 있음 | sensor consumer CloudWatch Logs |
+| Timestamp 동일 | 메시지 생성 루프 안에서 현재 시각 재계산 |
+| ALERT 실패 | 임계값, alert Trigger, alert consumer 로그 |
+
+
+
 ### 3.1 목표
 
 Private MSK 클러스터를 IAM 인증으로 구성하고, EC2 Producer가 센서 데이터를 `wsc2026-sensor-raw` 토픽으로 발행합니다. Lambda consumer가 데이터를 처리해 DynamoDB에 저장하고, 이상 데이터는 `wsc2026-sensor-alert` 토픽으로 넘깁니다. Alert consumer는 SNS 알림과 S3 로그 저장을 수행합니다.
