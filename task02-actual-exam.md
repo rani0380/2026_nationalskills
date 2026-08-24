@@ -1017,6 +1017,172 @@ LAG가 계속 증가하면 Lambda Event Source Mapping 상태, Lambda 오류, IA
 
 ## Module 4. CDN Service Setup (3점)
 
+
+### 4.0-A 초보자용 따라하기
+
+#### 먼저 결과 모습을 이해합니다
+
+CloudFront 주소 하나에서 두 기능이 동작해야 합니다.
+
+| 시험 요청 | 처리 경로 | 정상 결과 |
+|---|---|---|
+| POST /now | CloudFront → API Gateway → Lambda | 호출할 때마다 달라지는 현재 KST 문장 |
+| GET /static/image.png | CloudFront → OAI → Private S3 | 브라우저에 이미지 표시 |
+
+CloudFront 주소는 마지막에 생성됩니다. 먼저 S3와 Lambda/API를 완성한 뒤 CloudFront에서 두 Origin을 묶습니다.
+
+#### 1단계 — CloudShell 변수
+
+    export AWS_DEFAULT_REGION=us-east-1
+    export NUM=<본인_비번호>
+    export BUCKET=wsk2026-encrypted-data-$NUM
+    export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    echo "$BUCKET"
+    aws sts get-caller-identity
+
+버킷 이름에 꺾쇠나 한글을 넣지 않습니다. 예를 들어 비번호가 12라면 wsk2026-encrypted-data-12입니다.
+
+#### 2단계 — KMS Key
+
+Console → KMS → Customer managed keys → Create key.
+
+1. Symmetric, Encrypt and decrypt를 선택합니다.
+2. Alias를 wsk2026-cdn-key로 만듭니다.
+3. 본인 Role을 Key administrator와 Key user로 지정합니다.
+4. 생성한 Key ARN을 메모합니다.
+
+주의: S3 암호화에서 DSSE-KMS가 아니라 일반 SSE-KMS와 Customer managed key를 선택합니다.
+
+확인:
+
+    aws kms describe-key --key-id alias/wsk2026-cdn-key \
+      --query 'KeyMetadata.{State:KeyState,Enabled:Enabled,Arn:Arn}' --output table
+
+정상 결과: Enabled가 True.
+
+#### 3단계 — Private S3와 이미지
+
+Console → S3 → Create bucket.
+
+1. 이름은 BUCKET 변수 값.
+2. Region us-east-1.
+3. Block all public access 유지.
+4. Default encryption은 SSE-KMS.
+5. Customer managed key로 wsk2026-cdn-key 선택.
+6. 버킷 안에 static 폴더를 만들고 제공 image.png 업로드.
+
+확인:
+
+    aws s3api head-object --bucket "$BUCKET" --key static/image.png \
+      --query '{Type:ContentType,Encryption:ServerSideEncryption,KMS:SSEKMSKeyId}'
+    aws s3api get-public-access-block --bucket "$BUCKET"
+
+정상 결과: Encryption aws:kms, Public access 네 항목 모두 true.
+
+#### 4단계 — KST Lambda
+
+Console → Lambda → Create function.
+
+- Function name: wsk2026-now
+- Runtime: Python
+- Region: us-east-1
+- 코드는 아래 Lambda 코드 사용
+- Deploy를 반드시 클릭
+
+Test Event는 빈 JSON으로 만들고 Test합니다. 정상 결과 예:
+
+    현재 시각은 2026년 8월 24일 14시 05분 30초입니다.
+
+2초 뒤 다시 Test했을 때 초가 달라져야 합니다. 같다면 고정 문자열을 반환하거나 캐시하는 코드입니다.
+
+#### 5단계 — HTTP API
+
+Console → API Gateway → Create API → HTTP API.
+
+1. API name wsk2026-api.
+2. Integration에 Lambda wsk2026-now 선택.
+3. Route는 POST /now.
+4. Stage는 $default, Auto-deploy On.
+5. 생성 후 Invoke URL을 메모합니다.
+
+직접 시험:
+
+    export API_ID=$(aws apigatewayv2 get-apis \
+      --query "Items[?Name=='wsk2026-api'].ApiId|[0]" --output text)
+    curl -X POST "https://$API_ID.execute-api.us-east-1.amazonaws.com/now"
+    sleep 2
+    curl -X POST "https://$API_ID.execute-api.us-east-1.amazonaws.com/now"
+
+두 결과 시간이 달라야 다음 단계로 이동합니다.
+
+#### 6단계 — CloudFront Origin 두 개
+
+Console → CloudFront → Create distribution.
+
+S3 Origin:
+- Domain은 S3 website endpoint가 아니라 S3 REST endpoint.
+- Origin access는 Legacy access identities(OAI).
+- 새 OAI를 만들고 버킷 정책 자동 업데이트.
+- S3 버킷 자체는 Public으로 열지 않음.
+
+API Origin:
+- Domain은 API Invoke URL에서 https://와 경로를 뺀 execute-api 도메인.
+- Protocol HTTPS only.
+
+Distribution Comment는 wsk2026-cf로 입력합니다.
+
+#### 7단계 — Behavior 두 개
+
+Default behavior:
+- Origin: S3
+- Viewer protocol: Redirect HTTP to HTTPS
+- Allowed methods: GET, HEAD
+- Cache policy: CachingOptimized
+
+추가 Behavior:
+- Path pattern: /now
+- Origin: API Gateway
+- Viewer protocol: HTTPS only
+- Allowed methods에 POST 포함
+- Cache policy: CachingDisabled
+- Origin request policy: AllViewerExceptHostHeader
+
+배포 상태가 Deployed가 될 때까지 기다립니다.
+
+#### 8단계 — 최종 시험과 3분 갱신
+
+    export DIST_ID=<CloudFront_배포_ID>
+    export CF_DOMAIN=$(aws cloudfront get-distribution \
+      --id "$DIST_ID" --query Distribution.DomainName --output text)
+
+    curl -X POST "https://$CF_DOMAIN/now"
+    sleep 2
+    curl -X POST "https://$CF_DOMAIN/now"
+    curl -I "https://$CF_DOMAIN/static/image.png"
+
+브라우저 주소창에도 https://CF_DOMAIN/static/image.png를 입력하여 이미지가 보이는지 확인합니다.
+
+파일 교체:
+
+    aws s3 cp ./image.png "s3://$BUCKET/static/image.png" \
+      --sse aws:kms --sse-kms-key-id alias/wsk2026-cdn-key
+    aws cloudfront create-invalidation \
+      --distribution-id "$DIST_ID" --paths /static/image.png
+
+3분 안에 새 이미지가 보이면 통과입니다. Console 화면이 아니라 실제 브라우저 이미지로 확인합니다.
+
+#### 막혔을 때
+
+| 증상 | 먼저 확인 |
+|---|---|
+| S3 이미지 403 | OAI, Bucket policy, REST Origin |
+| /now 403 또는 404 | POST Route, $default Stage, Behavior /now |
+| /now 시간이 같음 | CachingDisabled, Lambda에서 현재 KST 재계산 |
+| 이미지가 안 바뀜 | Invalidation path와 업로드 Key |
+| KMS AccessDenied | Key policy와 CloudFront/OAI S3 읽기 구성 |
+
+
+
 고정값: us-east-1, Comment wsk2026-cf, S3 wsk2026-encrypted-data-<비번호>, HTTP API wsk2026-api, Lambda wsk2026-now. 단일 CloudFront 주소에서 POST /now와 GET /static/image.png가 동작해야 합니다.
 
 ### 콘솔 구축
@@ -1068,6 +1234,212 @@ Lambda 코드:
 ---
 
 ## Module 5. Legacy System Operation (6점)
+
+
+### 5.0-A 초보자용 따라하기
+
+#### 먼저 요청 흐름을 이해합니다
+
+- /healthz와 /v1/readings/{id}는 ALB가 ECS root로 보냅니다.
+- root는 같은 Task의 stub에게 조회를 요청합니다.
+- stub는 Aurora에서 데이터를 읽습니다.
+- /ingest는 ALB가 Lambda로 보내며 Lambda가 Aurora에 저장합니다.
+
+처음부터 전부 만들지 말고 DB → EFS → Container → ECS → Lambda → ALB 순서로 연결합니다.
+
+#### 1단계 — Region과 이름
+
+    export AWS_DEFAULT_REGION=eu-central-1
+    export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    aws sts get-caller-identity
+
+고정 이름:
+- ALB shgold-alb
+- ECS Cluster shgold-cluster
+- Lambda shgold-ingestion
+- Aurora shgold-mysql
+- DB shgold, Table readings
+
+이름과 Name Tag를 모두 맞춥니다.
+
+#### 2단계 — VPC와 보안그룹
+
+2AZ VPC를 만듭니다.
+
+- Public A/B: Internet-facing ALB.
+- Private A/B: ECS, Lambda, Aurora, EFS.
+- Private Subnet은 NAT 또는 ECR/Logs/Secrets VPC Endpoint가 필요합니다.
+
+SG 연결은 다음 표 그대로 만듭니다.
+
+| 도착 | Port | Source |
+|---|---:|---|
+| ALB SG | 80 | 0.0.0.0/0 |
+| ECS SG | 8080 | ALB SG |
+| DB SG | 3306 | ECS SG와 Lambda SG |
+| EFS SG | 2049 | ECS SG |
+
+stub 8081은 같은 Task 내부 통신이므로 인터넷이나 ALB에 열지 않습니다.
+
+#### 3단계 — Aurora와 Secret
+
+Console → RDS → Create database.
+
+1. Aurora MySQL Compatible.
+2. Version 8.4.x.
+3. Identifier shgold-mysql.
+4. Private DB Subnet Group과 DB SG.
+5. Public access No.
+6. Writer Endpoint를 메모.
+
+Secrets Manager에서 shgold/aurora/credentials를 만들고 username/password를 저장합니다.
+
+DB에 접속 가능한 Bastion/SSM 서버에서 CREATE DATABASE와 CREATE TABLE 명령을 실행합니다.
+
+    SHOW DATABASES;
+    USE shgold;
+    SHOW CREATE TABLE readings;
+
+readings의 PK가 id인지 확인합니다.
+
+#### 4단계 — EFS
+
+EFS를 암호화해 만들고 Private A/B에 Mount Target을 각각 생성합니다. EFS SG를 연결합니다. Access Point root path는 /shgold로 만들 수 있습니다.
+
+ECS Task에서 root 컨테이너의 /mnt/shgold-efs에 마운트합니다. 제공 root는 이 디렉터리가 없으면 시작에 실패합니다.
+
+#### 5단계 — 설정파일과 이미지
+
+root/config.ini:
+- port 8080
+- upstream 8081
+- shared_dir /mnt/shgold-efs
+
+stub/config.ini:
+- host는 Aurora Writer Endpoint
+- dbname shgold
+- secret_name shgold/aurora/credentials
+- region eu-central-1
+
+평문 비밀번호를 파일에 넣지 않습니다.
+
+제공 root/stub은 ARM64이므로 Docker build도 linux/arm64이고 Task도 Linux/ARM64여야 합니다. ECR에 두 이미지를 push한 뒤 describe-images로 latest Tag를 확인합니다.
+
+#### 6단계 — IAM과 Task Definition
+
+ECS execution role:
+- ECR Image pull
+- CloudWatch Logs
+
+ECS task role:
+- Secret 읽기
+- KMS decrypt
+
+Task Definition:
+- Family shgold-task
+- Fargate, awsvpc
+- Linux/ARM64
+- root 8080, stub 8081
+- 두 컨테이너 essential
+- EFS를 root의 /mnt/shgold-efs에 mount
+- awslogs 사용
+
+등록 후 Console의 JSON/Container 화면에서 Architecture와 두 Port를 다시 확인합니다.
+
+#### 7단계 — ECS Cluster와 Service
+
+1. Cluster shgold-cluster 생성.
+2. Service shgold-service 생성.
+3. Desired tasks 2.
+4. Private A/B와 ECS SG.
+5. Public IP Off.
+6. root:8080을 IP Target Group에 연결.
+7. Health check path /healthz.
+
+정상 조건:
+
+    aws ecs describe-services --cluster shgold-cluster \
+      --services shgold-service \
+      --query 'services[0].{Desired:desiredCount,Running:runningCount,Events:events[0:3].message}'
+
+Desired 2, Running 2가 될 때까지 다음 단계로 넘어가지 않습니다.
+
+#### 8단계 — Ingestion Lambda
+
+제공 lambda_function.py를 새로 작성하지 않고 그대로 패키징합니다.
+
+- Name shgold-ingestion과 Name Tag.
+- Private A/B와 Lambda SG.
+- DB_HOST는 Aurora Writer Endpoint.
+- DB_PORT 3306, DB_NAME shgold.
+- DB_SECRET_NAME shgold/aurora/credentials.
+- TABLE_NAME readings, HEALTH_PATH /healthz.
+- Secret/KMS/VPC/Logs 권한.
+
+Lambda Console Test로 health event를 시험할 수 있지만 최종 시험은 ALB /ingest로 합니다.
+
+#### 9단계 — ALB 경로 연결
+
+Internet-facing ALB shgold-alb를 Public A/B에 생성합니다.
+
+- Default Rule → root Target Group.
+- Path /ingest → Lambda Target Group.
+- Lambda add-permission 후 Target 등록.
+- root TG health check /healthz.
+
+확인:
+
+    aws elbv2 describe-target-health --target-group-arn <ROOT_TG_ARN> \
+      --query 'TargetHealthDescriptions[*].TargetHealth'
+
+모든 root Target이 healthy여야 합니다.
+
+#### 10단계 — 순서대로 기능시험
+
+    export ALB_DNS=$(aws elbv2 describe-load-balancers \
+      --names shgold-alb --query 'LoadBalancers[0].DNSName' --output text)
+
+    curl -sS -w '\nHTTP=%{http_code} TIME=%{time_total}s\n' \
+      "http://$ALB_DNS/healthz"
+
+먼저 health가 200인지 확인합니다. 그 다음 저장:
+
+    RESPONSE=$(curl -sS -X POST "http://$ALB_DNS/ingest" \
+      -H 'Content-Type: application/json' \
+      -d '{"device_id":"category-stuff-1","metric":"temp","value":82.4}')
+    echo "$RESPONSE"
+    ID=$(printf '%s' "$RESPONSE" |
+      python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+    echo "$ID"
+
+마지막으로 같은 ID 조회:
+
+    curl -sS -w '\nHTTP=%{http_code} TIME=%{time_total}s\n' \
+      "http://$ALB_DNS/v1/readings/$ID"
+
+health → ingest → read 순서로 해야 어디서 실패했는지 구분하기 쉽습니다.
+
+#### 11단계 — 1초와 성공률 확인
+
+    for i in $(seq 1 20); do
+      curl -s -o /dev/null -w '%{http_code} %{time_total}\n' \
+        "http://$ALB_DNS/v1/readings/$ID"
+    done
+
+20회 모두 2xx이고 각 시간이 1.000 미만이어야 합니다.
+
+#### 막혔을 때
+
+| 증상 | 먼저 확인 |
+|---|---|
+| ECS 0/2 | ECS Events, ARM64, ECR/NAT, execution role |
+| root 즉시 종료 | EFS mount와 /mnt/shgold-efs |
+| Target unhealthy | ECS SG 8080, /healthz, root 로그 |
+| read 502 | stub 8081, 같은 Task, DB Endpoint/Secret |
+| ingest 502 | Lambda permission, Target 등록, DB SG |
+| 1초 초과 | Secret/DB 연결 재사용, CPU/Memory, Aurora 상태 |
+
+
 
 고정값: eu-central-1, ALB shgold-alb, ECS Cluster shgold-cluster, Lambda shgold-ingestion, Aurora shgold-mysql(MySQL 8.4.x). 모두 이름과 Name tag를 맞춥니다. 실제 root/stub은 ARM64 Linux 실행파일입니다.
 
