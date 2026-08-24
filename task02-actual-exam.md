@@ -851,6 +851,126 @@ Lambda 패키징:
 
 ---
 
+
+## Module 5 보강 해설 — 처음부터 끝까지
+
+### 5-A. 요청 흐름
+
+| 요청 | ALB 규칙 | 대상 |
+|---|---|---|
+| GET /healthz | 기본 | ECS root:8080 |
+| GET /v1/readings/{id} | 기본 | root → 같은 Task의 stub:8081 → Aurora |
+| POST /ingest | /ingest | Lambda Target Group → Aurora |
+
+root와 stub은 한 Fargate Task에 둡니다. 같은 Task는 localhost를 공유하므로 제공된 root 설정의 upstream 8081이 그대로 동작합니다. ALB에는 root:8080만 등록하며 stub은 외부에 공개하지 않습니다.
+
+### 5-B. 네트워크와 보안그룹
+
+    export AWS_DEFAULT_REGION=eu-central-1
+    export VPC_ID=<VPC_ID>
+    export PUB_A=<PUBLIC_A>
+    export PUB_B=<PUBLIC_B>
+    export PRIV_A=<PRIVATE_A>
+    export PRIV_B=<PRIVATE_B>
+    export ALB_SG=<ALB_SG>
+    export ECS_SG=<ECS_SG>
+    export DB_SG=<DB_SG>
+    export EFS_SG=<EFS_SG>
+    export LAMBDA_SG=<LAMBDA_SG>
+
+    aws ec2 authorize-security-group-ingress --group-id "$ALB_SG" --protocol tcp --port 80 --cidr 0.0.0.0/0
+    aws ec2 authorize-security-group-ingress --group-id "$ECS_SG" --protocol tcp --port 8080 --source-group "$ALB_SG"
+    aws ec2 authorize-security-group-ingress --group-id "$DB_SG" --protocol tcp --port 3306 --source-group "$ECS_SG"
+    aws ec2 authorize-security-group-ingress --group-id "$DB_SG" --protocol tcp --port 3306 --source-group "$LAMBDA_SG"
+    aws ec2 authorize-security-group-ingress --group-id "$EFS_SG" --protocol tcp --port 2049 --source-group "$ECS_SG"
+
+Private Subnet에는 ECR·CloudWatch Logs·Secrets Manager 접근용 NAT 또는 VPC Endpoint가 필요합니다. DB, EFS, stub 8081은 0.0.0.0/0으로 열지 않습니다.
+
+### 5-C. Aurora·Secret·DB 초기화
+
+콘솔에서 Private DB Subnet Group을 만들고 Aurora MySQL 8.4.x, identifier shgold-mysql, Public access No, DB_SG로 생성합니다. Secrets Manager에는 shgold/aurora/credentials 이름으로 username/password JSON을 저장합니다.
+
+    export DB_ENDPOINT=$(aws rds describe-db-clusters --db-cluster-identifier shgold-mysql --query 'DBClusters[0].Endpoint' --output text)
+    aws rds describe-db-clusters --db-cluster-identifier shgold-mysql --query 'DBClusters[0].{Engine:Engine,Version:EngineVersion,Status:Status,Encrypted:StorageEncrypted,Endpoint:Endpoint}'
+
+VPC 내부 Bastion/SSM 서버에서 mysql로 접속하여 앞 절의 CREATE DATABASE/TABLE을 실행하고 SHOW CREATE TABLE readings로 PK와 형식을 확인합니다.
+
+### 5-D. EFS
+
+    export EFS_ID=$(aws efs create-file-system --encrypted --tags Key=Name,Value=shgold-efs --query FileSystemId --output text)
+    aws efs create-mount-target --file-system-id "$EFS_ID" --subnet-id "$PRIV_A" --security-groups "$EFS_SG"
+    aws efs create-mount-target --file-system-id "$EFS_ID" --subnet-id "$PRIV_B" --security-groups "$EFS_SG"
+    export AP_ID=$(aws efs create-access-point --file-system-id "$EFS_ID" --posix-user Uid=0,Gid=0 --root-directory 'Path=/shgold,CreationInfo={OwnerUid=0,OwnerGid=0,Permissions=0777}' --query AccessPointId --output text)
+
+두 AZ의 Mount Target이 available이어야 합니다. Task Definition에서 transit encryption을 켜고 root 컨테이너에 /mnt/shgold-efs로 마운트합니다.
+
+### 5-E. 제공 설정파일
+
+root/config.ini는 port 8080, upstream port 8081, shared_dir /mnt/shgold-efs를 유지합니다. stub/config.ini는 다음만 현장 값으로 변경합니다.
+
+    [server]
+    port = 8081
+    [aws]
+    region = eu-central-1
+    [database]
+    host = <AURORA_WRITER_ENDPOINT>
+    port = 3306
+    dbname = shgold
+    user =
+    password =
+    secret_name = shgold/aurora/credentials
+
+평문 password 대신 Secret을 사용합니다. Task는 Linux/ARM64, awsvpc, Fargate, root/stub 모두 essential, awslogs 사용, root가 stub START 이후 시작하도록 설정합니다.
+
+### 5-F. IAM 핵심
+
+- ECS execution role: AmazonECSTaskExecutionRolePolicy.
+- ECS task role: 해당 Secret의 secretsmanager:GetSecretValue와 해당 KMS key의 kms:Decrypt.
+- Lambda role: AWSLambdaBasicExecutionRole, AWSLambdaVPCAccessExecutionRole, 같은 Secret/KMS 최소권한.
+- 과도한 AdministratorAccess 대신 ARN을 실제 Secret/Key로 제한합니다.
+
+### 5-G. ALB와 ECS
+
+    export ROOT_TG_ARN=$(aws elbv2 create-target-group --name shgold-root-tg --protocol HTTP --port 8080 --vpc-id "$VPC_ID" --target-type ip --health-check-path /healthz --query 'TargetGroups[0].TargetGroupArn' --output text)
+    export LAMBDA_TG_ARN=$(aws elbv2 create-target-group --name shgold-ingestion-tg --target-type lambda --query 'TargetGroups[0].TargetGroupArn' --output text)
+    export ALB_ARN=$(aws elbv2 create-load-balancer --name shgold-alb --type application --scheme internet-facing --subnets "$PUB_A" "$PUB_B" --security-groups "$ALB_SG" --tags Key=Name,Value=shgold-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text)
+
+    aws lambda add-permission --function-name shgold-ingestion --statement-id alb-invoke --action lambda:InvokeFunction --principal elasticloadbalancing.amazonaws.com --source-arn "$LAMBDA_TG_ARN"
+    aws elbv2 register-targets --target-group-arn "$LAMBDA_TG_ARN" --targets Id=$(aws lambda get-function --function-name shgold-ingestion --query Configuration.FunctionArn --output text)
+
+ALB Listener 80의 기본 action은 ROOT_TG_ARN, priority 10의 path /ingest 규칙은 LAMBDA_TG_ARN으로 지정합니다.
+
+    aws ecs create-cluster --cluster-name shgold-cluster --tags key=Name,value=shgold-cluster
+    aws ecs create-service --cluster shgold-cluster --service-name shgold-service --task-definition shgold-task --desired-count 2 --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[$PRIV_A,$PRIV_B],securityGroups=[$ECS_SG],assignPublicIp=DISABLED}" --load-balancers "targetGroupArn=$ROOT_TG_ARN,containerName=root,containerPort=8080" --health-check-grace-period-seconds 60
+    aws ecs wait services-stable --cluster shgold-cluster --services shgold-service
+
+### 5-H. Lambda 설정 확인
+
+제공 Lambda는 ALB event/response, Secret 캐시, DB connection 재사용을 이미 구현하므로 새로 작성하지 않습니다.
+
+    aws lambda update-function-configuration --function-name shgold-ingestion --vpc-config "SubnetIds=$PRIV_A,$PRIV_B,SecurityGroupIds=$LAMBDA_SG" --environment "Variables={DB_HOST=$DB_ENDPOINT,DB_PORT=3306,DB_NAME=shgold,DB_USER=<DB_USER>,DB_SECRET_NAME=shgold/aurora/credentials,TABLE_NAME=readings,HEALTH_PATH=/healthz}" --timeout 15 --memory-size 512
+    aws lambda wait function-updated --function-name shgold-ingestion
+    aws lambda get-function-configuration --function-name shgold-ingestion --query '{Runtime:Runtime,Vpc:VpcConfig,Env:Environment.Variables}'
+
+### 5-I. 점수별 합격 증거
+
+| 채점항목 | 합격 증거 |
+|---|---|
+| Service Provisioning 1 | ALB active, ECS 2/2, TG healthy, Aurora available |
+| Data Ingestion 1 | POST /ingest 2xx, UUID 반환, DB row 존재 |
+| Success Rate 1 | health/ingest/read 반복 호출 모두 2xx |
+| Performance Tuning 1.5 | 각 time_total 1.000 미만 |
+| Serverless Computing 1.5 | /ingest ALB 규칙 → Lambda TG → Aurora 저장 |
+
+장애 진단:
+- CannotPullContainerError: NAT/ECR Endpoint와 execution role.
+- EFS timeout/root 즉시 종료: 두 AZ Mount Target, 2049 SG, /mnt/shgold-efs.
+- root 502/504: stub 실행 여부, 8081, 같은 Task, stub config.
+- Lambda DB 502: Lambda SG→DB SG 3306, Endpoint, Secret JSON.
+- ALB Lambda 502: add-permission, Lambda target 등록, 제공 코드 유지.
+- 1초 초과: Secret/NAT 지연, ECS CPU/Memory, Aurora 연결, id PK와 CloudWatch 로그 확인.
+
+
 ## 실제 채점표 30점 체크리스트
 
 | 모듈 | 항목(점수) |
