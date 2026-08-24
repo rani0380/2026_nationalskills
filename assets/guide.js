@@ -29,8 +29,8 @@ const docs = {
     file: "02_2과제_내일변경_대응센터.md",
   },
   task02second: {
-    title: "제2과제 실제 출제본 공지·풀이",
-    description: "8월 24일 실제 출제 공지를 반영한 유효 모듈, 삭제 모듈, CDN KST 및 CloudShell 필수 점검 안내입니다.",
+    title: "제2과제 실제 출제본 30점 만점 풀이",
+    description: "실제 시험지 5개 모듈과 채점표 27개 세부항목·30점을 반영한 콘솔 및 CLI 만점 풀이입니다.",
     file: "task02-actual-exam.md",
   },
   task02m1: {
@@ -161,7 +161,7 @@ bash ~/mark.sh</code></pre>
     section.querySelector(".score-submit__download")?.remove();
   }
   const moduleDownloads = {
-    task02second: ["module1.zip", "module2.zip"],
+    task02second: ["day2_release_files_actual.zip"],
     task02m1: ["module1.zip"],
     task02m2: ["module2.zip"],
     task02m3: ["module3.zip"],
