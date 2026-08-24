@@ -660,3 +660,23 @@ h1 {
 .score-submit__download p {
   margin: 10px 0;
 }
+
+/* Distinguish explanatory prose from executable code. */
+.markdown-body { font-size:16px; line-height:1.78; }
+.markdown-body > p { max-width:78ch; margin:12px 0 18px; }
+.markdown-body h2 { color:#102a43; }
+.markdown-body h3 { padding-left:12px; border-left:4px solid #2f80ed; color:#173b63; }
+.code-panel { overflow:hidden; margin:18px 0 28px; border:1px solid #334155; border-radius:10px; background:#0b1220; box-shadow:0 10px 24px rgba(15,23,42,.16); }
+.code-panel__bar { display:flex; align-items:center; justify-content:space-between; min-height:38px; padding:0 10px 0 14px; border-bottom:1px solid #293548; background:#172033; color:#93c5fd; font:700 11px/1 Consolas,monospace; letter-spacing:.08em; }
+.markdown-body .code-panel pre { margin:0; padding:18px 20px; border-radius:0; background:#0b1220; line-height:1.65; tab-size:2; }
+.markdown-body .code-panel pre code { color:#dbeafe; white-space:pre; font-size:14px; }
+.code-copy { padding:7px 11px; border:1px solid #52627a; border-radius:6px; background:#243047; color:#f8fafc; font:700 12px/1 system-ui,sans-serif; cursor:pointer; }
+.code-copy:hover,.code-copy:focus-visible { border-color:#93c5fd; background:#31415e; }
+.markdown-body :not(pre)>code { padding:.16em .42em; border:1px solid #d7e0ea; background:#f1f5f9; color:#b42318; font-weight:650; }
+.markdown-body blockquote { margin:20px 0; padding:14px 18px; border-left:4px solid #f59e0b; border-radius:0 8px 8px 0; background:#fff8e8; color:#653c08; }
+.markdown-body tbody tr:nth-child(even) { background:#f8fafc; }
+@media (max-width:620px) {
+  .markdown-body { padding:22px 16px; font-size:15px; }
+  .markdown-body .code-panel pre { padding:15px; }
+  .markdown-body .code-panel pre code { font-size:12.5px; }
+}

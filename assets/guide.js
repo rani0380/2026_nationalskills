@@ -82,7 +82,9 @@ fetch(encodeURI(selected.file))
     return response.text();
   })
   .then((markdown) => {
-    document.getElementById("content").innerHTML = renderMarkdown(markdown);
+    const content = document.getElementById("content");
+    content.innerHTML = renderMarkdown(markdown);
+    enhanceCodeBlocks(content);
     if (["task02first", "task02second", "task02m1", "task02m2", "task02m3", "task02m4"].includes(docKey)) {
       mountScoreSubmissionForm(docKey);
     }
@@ -257,6 +259,31 @@ bash ~/mark.sh</code></pre>
   });
 }
 
+function enhanceCodeBlocks(container) {
+  for (const pre of container.querySelectorAll("pre")) {
+    const code = pre.querySelector("code");
+    if (!code || pre.closest(".code-panel")) continue;
+    const panel = document.createElement("div");
+    panel.className = "code-panel";
+    const bar = document.createElement("div");
+    bar.className = "code-panel__bar";
+    bar.innerHTML = "<span>CLI / CODE</span>";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "code-copy";
+    button.textContent = "복사";
+    button.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(code.textContent);
+        button.textContent = "복사됨";
+        setTimeout(() => button.textContent = "복사", 1400);
+      } catch { button.textContent = "복사 실패"; }
+    };
+    bar.append(button);
+    pre.before(panel);
+    panel.append(bar, pre);
+  }
+}
 function containsPossibleSecret(value) {
   return /AKIA[0-9A-Z]{16}/.test(value)
     || /(aws_secret_access_key|aws_session_token)\s*[=:]/i.test(value)
@@ -301,6 +328,16 @@ function renderMarkdown(markdown) {
       continue;
     }
 
+    if (/^( {4}|\t)/.test(line)) {
+      closeLists();
+      const code = [];
+      while (index < lines.length && (/^( {4}|\t)/.test(lines[index]) || (!lines[index].trim() && index + 1 < lines.length && /^( {4}|\t)/.test(lines[index + 1])))) {
+        code.push(lines[index].startsWith("\t") ? lines[index].slice(1) : lines[index].startsWith("    ") ? lines[index].slice(4) : "");
+        index += 1;
+      }
+      html.push("<pre><code>" + escapeHtml(code.join("\n")) + "</code></pre>");
+      continue;
+    }
     if (!line.trim()) {
       closeLists();
       index += 1;
@@ -389,6 +426,7 @@ function renderMarkdown(markdown) {
 function isBlockStart(lines, index) {
   const line = lines[index];
   return line.startsWith("```")
+    || /^( {4}|\t)/.test(line)
     || /^(#{1,6})\s+/.test(line)
     || /^\s*[-*]\s+/.test(line)
     || /^\s*\d+\.\s+/.test(line)
