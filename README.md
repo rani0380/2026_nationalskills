@@ -37,6 +37,8 @@
 
 18차시 실습과정: https://rani0380.github.io/2026_nationalskills/cloud-course/
 
+제3과제 System operation 공개 풀이: https://rani0380.github.io/2026_nationalskills/day3-system-operation/
+
 ---
 
 > 대회 문제에서 지정된 리전, EC2 타입, RDS 조건, 응답코드와 수업용 예시값은 구분하여 사용합니다.

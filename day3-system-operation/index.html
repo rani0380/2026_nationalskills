@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="2026 전국기능경기대회 클라우드컴퓨팅 제3과제 System operation 초보자용 공개 학습 풀이">
+  <title>AWS System Operation | 제3과제 공개 학습 풀이</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <nav><a class="brand" href="#top">AWS · DAY 3</a><a href="#checklist">최종 점검표</a></nav>
+    <div class="hero-inner" id="top">
+      <p class="eyebrow">2026 전국기능경기대회 · 클라우드컴퓨팅</p>
+      <h1>System operation<br><span>처음부터 끝까지</span></h1>
+      <p class="lead">AWS를 처음 접하는 학습자도 전체 구조를 이해하고, 안전하게 구축하고, 스스로 검증할 수 있도록 만든 제3과제 공개 학습 풀이입니다.</p>
+      <div class="hero-actions"><a class="button primary" href="#start">구축 시작</a><a class="button" href="#danger">0점 조건 먼저 보기</a></div>
+      <div class="status"><span>리전</span><b>ap-northeast-2</b><span>엔드포인트</span><b>HTTPS 1개</b><span>컴퓨팅</span><b>EC2 only</b></div>
+    </div>
+  </header>
+
+  <main>
+    <aside class="toc">
+      <strong>목차</strong>
+      <a href="#interpretation">1. 요구사항 해석</a><a href="#architecture">2. 정답 구조</a>
+      <a href="#start">3. 시작 전 준비</a><a href="#network">4. VPC</a><a href="#rds">5. RDS</a>
+      <a href="#s3">6. S3</a><a href="#ecr">7. ECR</a><a href="#eks">8. EKS</a>
+      <a href="#apps">9. 앱 배포</a><a href="#endpoint">10. 단일 엔드포인트</a>
+      <a href="#monitoring">11. 모니터링</a><a href="#test">12. 검증</a><a href="#checklist">13. 최종 점검</a>
+    </aside>
+
+    <article>
+      <section class="notice">
+        <b>자료 성격</b> 이 페이지는 경기 종료 후 공개된 과제지를 바탕으로 만든 교육용 해설입니다. 실제 채점은 채점 플랫폼의 트래픽과 채점기준표가 우선합니다. 제공 바이너리와 <code>load_user.dump</code>는 공개 배포하지 않으며, 참가자에게 제공된 원본을 사용합니다.
+      </section>
+
+      <section id="danger">
+        <p class="kicker">STOP — 제일 먼저 확인</p><h2>한 번의 실수가 24점을 없앨 수 있습니다</h2>
+        <div class="danger-grid">
+          <div class="danger-card"><b>Fargate · Lambda 금지</b><p>경기 시작 1시간 뒤 EC2 이외 컴퓨팅 자원이 하나라도 있으면 성능·비용 항목이 모두 0점입니다. EKS Auto Mode도 사용하지 않습니다.</p></div>
+          <div class="danger-card"><b>DB는 지정 사양만</b><p>RDS MySQL 8.0, Multi-AZ DB instance, <code>db.t3.micro</code>, Primary 1대만 사용합니다. Read Replica와 추가 DB 금지.</p></div>
+          <div class="danger-card"><b>노드는 c5.large</b><p>EKS 컨테이너 호스팅 노드는 EC2 <code>c5.large</code>만, 최소 수량으로 구성합니다. Spot은 중단 위험 때문에 피합니다.</p></div>
+          <div class="danger-card"><b>서울 리전만</b><p>별도 언급이 없으면 모든 자원을 <code>ap-northeast-2</code>에 만듭니다. 사용하지 않는 EC2·VPC·다른 리전 자원도 감점 대상입니다.</p></div>
+        </div>
+        <pre><code># 작업 시작과 중간에 반드시 확인
+aws configure set region ap-northeast-2
+aws sts get-caller-identity
+aws configure get region
+
+# 금지 컴퓨팅 자원 확인 (출력이 없어야 안전)
+aws lambda list-functions --query 'Functions[].FunctionName'
+aws ecs list-clusters --query 'clusterArns'
+aws eks list-fargate-profiles --cluster-name apdev-eks</code></pre>
+      </section>
+
+      <section id="interpretation">
+        <p class="kicker">01 — Interpretation</p><h2>과제 요구사항을 서비스로 번역하기</h2>
+        <div class="table-wrap"><table><thead><tr><th>원문 요구</th><th>구현 선택</th><th>검증 기준</th></tr></thead><tbody>
+          <tr><td><code>/v1/user</code></td><td>user Deployment + ClusterIP Service</td><td>POST 201, GET 200, 목표 0.2초</td></tr>
+          <tr><td><code>/v1/product</code></td><td>product Deployment + RDS/S3 권한</td><td>POST 201, GET/PUT 200, 목표 0.2초</td></tr>
+          <tr><td><code>/v1/stress</code></td><td>stress Deployment</td><td>POST 201, 목표 1초</td></tr>
+          <tr><td><code>/images/*</code></td><td>product가 private S3에서 가져와 응답</td><td>같은 HTTPS 도메인, 5초 이내</td></tr>
+          <tr><td>단일 endpoint</td><td>ALB Ingress + ACM 인증서</td><td><code>https://...</code>, 경로 없음</td></tr>
+          <tr><td>비정상 요청</td><td>WAF 403 + 앱/Ingress 404</td><td>잘못된 /v1 요청 403, 없는 API 404</td></tr>
+          <tr><td>가용성·운영</td><td>2 AZ, replicas, probes, CloudWatch</td><td>로그·지표·알람 확인</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section id="architecture">
+        <p class="kicker">02 — Architecture</p><h2>권장 아키텍처</h2>
+        <div class="diagram" role="img" aria-label="클라이언트에서 ALB와 WAF를 거쳐 EKS 서비스, RDS, S3로 연결되는 구조">
+          <div class="node client">Internet client</div><div class="arrow">↓ HTTPS</div>
+          <div class="node edge">AWS WAF <span>→</span> Application Load Balancer</div><div class="arrow">↓ path routing</div>
+          <div class="cluster"><b>Amazon EKS · EC2 c5.large</b><div class="services"><span>user<br><small>/v1/user</small></span><span>product<br><small>/v1/product · /images</small></span><span>stress<br><small>/v1/stress</small></span></div></div>
+          <div class="split"><div>↙<br><span class="node data">RDS MySQL<br><small>Multi-AZ · db.t3.micro</small></span></div><div>↘<br><span class="node data">Private S3<br><small>product images</small></span></div></div>
+        </div>
+        <div class="callout"><b>왜 S3를 직접 공개하지 않나요?</b> 과제는 이미지도 애플리케이션과 동일한 엔드포인트에서 제공하라고 합니다. product Pod의 IAM 권한으로 S3 객체를 읽고 <code>/images/{object path}</code>에서 스트리밍하면, 버킷 공개 없이 단일 도메인을 유지할 수 있습니다.</div>
+      </section>
+
+      <section id="start">
+        <p class="kicker">03 — Before you build</p><h2>변수와 도구 준비</h2>
+        <p>명령은 AWS CloudShell 또는 관리용 EC2에서 실행합니다. CloudShell은 명령 실행 환경일 뿐 애플리케이션 컴퓨팅 자원으로 사용하지 않습니다. 아래 대문자 값만 본인 환경에 맞게 바꿉니다.</p>
+        <pre><code>export AWS_REGION=ap-northeast-2
+export CLUSTER_NAME=apdev-eks
+export DB_ID=apdev-rds-instance
+export DB_NAME=dev
+export DB_USER=appuser
+export BUCKET_NAME=CHANGE-ME-UNIQUE-BUCKET
+export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# 설치 여부 확인
+aws --version
+kubectl version --client
+eksctl version
+helm version
+docker --version</code></pre>
+        <div class="callout warning"><b>비밀번호를 Git에 올리지 마세요.</b> DB 비밀번호는 Secrets Manager 또는 Kubernetes Secret에만 저장하고, 화면 캡처·쉘 기록·README에 남기지 않습니다.</div>
+      </section>
+
+      <section id="network">
+        <p class="kicker">04 — Network</p><h2>VPC: 2개 AZ, public/private 분리</h2>
+        <p>최소 권장 구조는 public subnet 2개(ALB), private subnet 2개(EKS 노드·RDS)입니다. 비용 최적화를 위해 NAT Gateway는 1개만 두는 선택지가 있지만 AZ 장애 시 외부 통신이 끊길 수 있습니다. 채점 트래픽 안정성을 우선하면 AZ별 NAT 2개가 유리하므로, 계정 비용 제한과 채점 비중을 보고 결정합니다.</p>
+        <ol class="steps">
+          <li><b>VPC</b><span><code>10.0.0.0/16</code>, DNS resolution/hostnames 활성화.</span></li>
+          <li><b>Public subnet</b><span>AZ a/c에 <code>10.0.0.0/24</code>, <code>10.0.1.0/24</code>. Internet Gateway 경로 연결.</span></li>
+          <li><b>Private subnet</b><span>AZ a/c에 <code>10.0.10.0/24</code>, <code>10.0.11.0/24</code>. NAT 경로 연결.</span></li>
+          <li><b>태그</b><span>public: <code>kubernetes.io/role/elb=1</code>, private: <code>kubernetes.io/role/internal-elb=1</code>.</span></li>
+          <li><b>보안 그룹</b><span>ALB 443→인터넷, RDS 3306→EKS node SG만 허용. DB public access는 No.</span></li>
+        </ol>
+        <div class="callout"><b>초보자 팁</b> 직접 VPC를 만드는 과정이 익숙하지 않다면 <code>eksctl</code>이 생성하는 VPC를 사용하고, 만들어진 private subnet으로 RDS DB subnet group을 구성해도 됩니다. 불필요한 두 번째 VPC는 만들지 마세요.</div>
+      </section>
+
+      <section id="rds">
+        <p class="kicker">05 — Database</p><h2>RDS MySQL을 정확한 사양으로 만들기</h2>
+        <div class="specs"><span><b>Identifier</b>apdev-rds-instance</span><span><b>Engine</b>MySQL Community 8.0</span><span><b>Class</b>db.t3.micro</span><span><b>Storage</b>gp3</span><span><b>Deployment</b>Multi-AZ DB instance</span><span><b>Public</b>No</span></div>
+        <ol class="steps"><li><b>DB subnet group</b><span>서로 다른 AZ의 private subnet 2개를 지정합니다.</span></li><li><b>보안 그룹</b><span>인바운드 3306의 소스를 EKS 노드 보안 그룹으로만 설정합니다.</span></li><li><b>DB 생성</b><span>위 사양, 초기 DB 이름 <code>dev</code>, 자동 백업 활성화. Read Replica는 만들지 않습니다.</span></li><li><b>연결 확인</b><span>EKS 내부 임시 Pod에서 DNS endpoint와 3306 연결을 검사합니다.</span></li></ol>
+        <pre><code># EKS 안에서 연결성만 확인
+kubectl run mysql-check --rm -it --restart=Never \
+  --image=mysql:8.0 -- mysql -h DB_ENDPOINT -u appuser -p dev
+
+# 과제지 SQL과 load_user.dump를 순서대로 적용
+mysql -h DB_ENDPOINT -u appuser -p dev &lt; schema.sql
+mysql -h DB_ENDPOINT -u appuser -p dev &lt; load_user.dump</code></pre>
+        <p>테이블은 과제지의 <code>user(id, username, email)</code>, <code>product(id, name, price, image_path)</code> 구조를 그대로 사용합니다. 제공 데이터는 수정·삭제하거나 임의 데이터를 대량 삽입하지 않습니다.</p>
+      </section>
+
+      <section id="s3">
+        <p class="kicker">06 — Object storage</p><h2>S3: 공개하지 않고 애플리케이션으로 제공</h2>
+        <pre><code>aws s3api create-bucket \
+  --bucket "$BUCKET_NAME" --region "$AWS_REGION" \
+  --create-bucket-configuration LocationConstraint="$AWS_REGION"
+
+aws s3api put-public-access-block --bucket "$BUCKET_NAME" \
+  --public-access-block-configuration \
+BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+
+aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" \
+  --versioning-configuration Status=Enabled</code></pre>
+        <p>product 앱에만 <code>s3:PutObject</code>, <code>s3:GetObject</code> 권한을 부여합니다. 가장 좋은 방법은 EKS Pod Identity 또는 IRSA로 product 서비스 계정에 최소 권한 역할을 연결하는 것입니다. 액세스 키를 Secret에 직접 넣지 않습니다.</p>
+        <pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:GetObject", "s3:PutObject"],
+    "Resource": "arn:aws:s3:::CHANGE-ME-UNIQUE-BUCKET/*"
+  }]
+}</code></pre>
+      </section>
+
+      <section id="ecr">
+        <p class="kicker">07 — Images</p><h2>ECR에 3개 컨테이너 이미지 저장</h2>
+        <pre><code>for APP in user product stress; do
+  aws ecr create-repository --repository-name "$APP" \
+    --image-scanning-configuration scanOnPush=true 2&gt;/dev/null || true
+done
+
+aws ecr get-login-password --region "$AWS_REGION" | \
+  docker login --username AWS --password-stdin \
+  "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+for APP in user product stress; do
+  docker build --platform linux/amd64 -t "$APP:1.0" "./$APP"
+  docker tag "$APP:1.0" "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$APP:1.0"
+  docker push "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$APP:1.0"
+done</code></pre>
+        <p>제공 바이너리는 Amazon Linux 2023, x86_64, TCP/8080 기준입니다. Dockerfile은 바이너리를 복사하고 실행 권한을 준 뒤 8080을 노출하는 최소 이미지로 작성합니다.</p>
+        <pre><code>FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal
+WORKDIR /app
+COPY app /app/app
+RUN chmod +x /app/app
+EXPOSE 8080
+USER 10001
+ENTRYPOINT ["/app/app"]</code></pre>
+      </section>
+
+      <section id="eks">
+        <p class="kicker">08 — Kubernetes</p><h2>EKS: EC2 c5.large만 사용</h2>
+        <p>과제의 금지 조건 때문에 Fargate profile, EKS Auto Mode, Karpenter로 다른 타입을 자동 생성하는 구성을 사용하지 않습니다. 관리형 노드 그룹의 인스턴스 타입을 <code>c5.large</code> 하나로 고정합니다.</p>
+        <pre><code># 예시: 기존 VPC를 지정한다면 vpc.subnets를 함께 작성
+cat &gt; cluster.yaml &lt;&lt;'YAML'
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: apdev-eks
+  region: ap-northeast-2
+managedNodeGroups:
+  - name: apdev-c5
+    instanceType: c5.large
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 2
+    privateNetworking: true
+    volumeType: gp3
+    volumeSize: 30
+    labels: { role: app }
+YAML
+
+eksctl create cluster -f cluster.yaml
+aws eks update-kubeconfig --region ap-northeast-2 --name apdev-eks
+kubectl get nodes -o wide</code></pre>
+        <div class="callout warning"><b>수량 판단</b> 1대는 가장 저렴하지만 노드 장애·업데이트 때 서비스가 중단됩니다. 2대는 고가용성 점수에 유리한 현실적 최소안입니다. 노드가 정말 모두 <code>c5.large</code>인지 EC2 콘솔에서도 확인하세요.</div>
+      </section>
+
+      <section id="apps">
+        <p class="kicker">09 — Workloads</p><h2>세 애플리케이션 배포</h2>
+        <p>DB 정보는 Secret, 일반 값은 ConfigMap으로 분리합니다. 모든 앱은 8080 포트, <code>/healthcheck</code> probe, stdout/stderr 로그를 사용합니다. user/product는 2 replicas, stress는 자원 상황을 보고 1~2 replicas로 시작합니다.</p>
+        <pre><code>kubectl create namespace apdev
+kubectl -n apdev create secret generic mysql-secret \
+  --from-literal=MYSQL_USER='appuser' \
+  --from-literal=MYSQL_PASSWORD='CHANGE-ME' \
+  --from-literal=MYSQL_HOST='DB_ENDPOINT' \
+  --from-literal=MYSQL_PORT='3306' \
+  --from-literal=MYSQL_DBNAME='dev'
+
+kubectl -n apdev create configmap app-config \
+  --from-literal=S3_BUCKET="$BUCKET_NAME" \
+  --from-literal=AWS_REGION='ap-northeast-2'</code></pre>
+        <pre><code>apiVersion: apps/v1
+kind: Deployment
+metadata: { name: user, namespace: apdev }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: user } }
+  template:
+    metadata: { labels: { app: user } }
+    spec:
+      containers:
+        - name: user
+          image: ACCOUNT_ID.dkr.ecr.ap-northeast-2.amazonaws.com/user:1.0
+          ports: [{ containerPort: 8080 }]
+          envFrom: [{ secretRef: { name: mysql-secret } }]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /healthcheck, port: 8080 }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthcheck, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata: { name: user, namespace: apdev }
+spec:
+  selector: { app: user }
+  ports: [{ port: 80, targetPort: 8080 }]</code></pre>
+        <p>같은 패턴으로 product와 stress를 만듭니다. product에는 <code>mysql-secret</code>과 <code>app-config</code>, Pod IAM service account를 연결하고, stress에는 DB 환경변수를 넣지 않습니다.</p>
+        <pre><code>kubectl apply -f k8s/
+kubectl -n apdev get deploy,pod,svc
+kubectl -n apdev logs deploy/user --tail=30
+kubectl -n apdev logs deploy/product --tail=30
+kubectl -n apdev logs deploy/stress --tail=30</code></pre>
+      </section>
+
+      <section id="endpoint">
+        <p class="kicker">10 — Edge</p><h2>ALB 하나로 모든 경로 제공</h2>
+        <ol class="steps"><li><b>AWS Load Balancer Controller</b><span>공식 절차로 설치하고 필요한 IAM 역할만 부여합니다.</span></li><li><b>ACM</b><span>계정에 존재하는 AWS 도메인에 인증서를 발급하고 DNS 검증합니다.</span></li><li><b>Ingress</b><span>public ALB, HTTPS 443, certificate ARN, health check를 설정합니다.</span></li><li><b>WAF</b><span>허용 method/path 형식을 벗어난 <code>/v1/*</code> 요청을 403으로 차단하도록 Web ACL을 ALB에 연결합니다.</span></li></ol>
+        <pre><code>apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: apdev
+  namespace: apdev
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: ACM_CERTIFICATE_ARN
+    alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
+spec:
+  ingressClassName: alb
+  rules:
+    - host: AWS_DOMAIN_NAME
+      http:
+        paths:
+          - path: /healthcheck
+            pathType: Exact
+            backend: { service: { name: user, port: { number: 80 } } }
+          - path: /v1/user
+            pathType: Prefix
+            backend: { service: { name: user, port: { number: 80 } } }
+          - path: /v1/product
+            pathType: Prefix
+            backend: { service: { name: product, port: { number: 80 } } }
+          - path: /images
+            pathType: Prefix
+            backend: { service: { name: product, port: { number: 80 } } }
+          - path: /v1/stress
+            pathType: Prefix
+            backend: { service: { name: stress, port: { number: 80 } } }</code></pre>
+        <div class="callout"><b>403과 404의 차이</b> 존재하는 API 경로에 규격을 벗어난 요청은 WAF 규칙으로 403. 존재하지 않는 <code>/v1/none</code> 같은 경로는 앱 또는 Ingress 기본 backend에서 404가 되어야 합니다. WAF가 모든 미등록 경로까지 차단하면 404 채점이 실패합니다.</div>
+        <p>채점 플랫폼에는 반드시 <code>https://AWS_DOMAIN_NAME</code>만 입력합니다. 끝의 <code>/</code>나 <code>/v1</code>을 붙이지 않습니다. 외부 DNS나 개인 구매 도메인은 사용하지 않습니다.</p>
+      </section>
+
+      <section id="monitoring">
+        <p class="kicker">11 — Operations</p><h2>로그·지표·알람으로 운영하기</h2>
+        <div class="cards"><div><b>ALB</b><p>TargetResponseTime, HTTPCode_Target_5XX_Count, HealthyHostCount. Access log는 필요 시 S3에 저장.</p></div><div><b>EKS</b><p>Container Insights 또는 CloudWatch Observability add-on으로 CPU, memory, pod restart 확인.</p></div><div><b>RDS</b><p>CPUUtilization, DatabaseConnections, FreeStorageSpace, Read/WriteLatency 확인.</p></div><div><b>애플리케이션</b><p>requestid와 uuid로 stdout 로그를 추적. 비밀번호·요청 본문의 민감정보는 기록하지 않음.</p></div></div>
+        <p>알람은 ALB 5XX, target response time, unhealthy host, RDS CPU/connection 등에 설정합니다. 알람을 만드는 것보다 실제로 <strong>OK → ALARM → OK</strong> 전환과 대응 절차를 확인하는 것이 중요합니다.</p>
+      </section>
+
+      <section id="test">
+        <p class="kicker">12 — Verification</p><h2>외부 클라이언트 기준으로 검증</h2>
+        <p>채점의 응답시간과 코드는 클라이언트 도착 기준입니다. EKS 내부 curl만 성공했다고 끝내지 말고 인터넷에서 최종 HTTPS endpoint로 확인합니다.</p>
+        <pre><code>BASE='https://AWS_DOMAIN_NAME'
+RID='999999999999'
+UUID='7c5a3c6a-758f-4bc5-9bdf-3e573a0ad729'
+
+curl -sS -o /dev/null -w 'health %{http_code} %{time_total}s\n' "$BASE/healthcheck"
+
+curl -sS -o /dev/null -w 'user POST %{http_code} %{time_total}s\n' \
+  -H 'content-type: application/json' -X POST "$BASE/v1/user" \
+  -d "{\"requestid\":\"$RID\",\"uuid\":\"$UUID\",\"username\":\"dbdump500001\",\"email\":\"dbdump500001@example.org\"}"
+
+curl -sS -o /dev/null -w 'user GET %{http_code} %{time_total}s\n' \
+  "$BASE/v1/user?email=dbdump500001@example.org&requestid=$RID&uuid=$UUID"
+
+curl -sS -o /dev/null -w 'product GET %{http_code} %{time_total}s\n' \
+  "$BASE/v1/product?id=dbdump50001&requestid=$RID&uuid=$UUID"
+
+curl -sS -o /dev/null -w 'stress POST %{http_code} %{time_total}s\n' \
+  -H 'content-type: application/json' -X POST "$BASE/v1/stress" \
+  -d "{\"requestid\":\"$RID\",\"uuid\":\"$UUID\",\"length\":256}"
+
+# 의도한 오류 코드 확인
+curl -sS -o /dev/null -w 'bad user %{http_code}\n' "$BASE/v1/user"  # 규격 위반이면 403
+curl -sS -o /dev/null -w 'none %{http_code}\n' "$BASE/v1/none"      # 404</code></pre>
+        <div class="callout warning"><b>부하 테스트 주의</b> 과제 종료 시 진행 중인 모든 테스트를 중단해야 합니다. 실제 채점 트래픽 외에 큰 부하를 장시간 만들면 성능을 떨어뜨리고 비용을 증가시킵니다. 작은 단계로만 확인하세요.</div>
+      </section>
+
+      <section id="checklist">
+        <p class="kicker">13 — Final checklist</p><h2>제출 직전 5분 점검</h2>
+        <div class="checklist">
+          <label><input type="checkbox"> 모든 자원이 ap-northeast-2에 있다.</label>
+          <label><input type="checkbox"> Fargate, Lambda, ECS 컴퓨팅 자원이 없다.</label>
+          <label><input type="checkbox"> EKS 노드는 c5.large만 있고 최소 수량이다.</label>
+          <label><input type="checkbox"> RDS는 apdev-rds-instance, MySQL 8.0, Multi-AZ, db.t3.micro Primary 1대뿐이다.</label>
+          <label><input type="checkbox"> S3는 private이며 product Pod 역할만 읽기/쓰기가 가능하다.</label>
+          <label><input type="checkbox"> user/product DB 읽기·쓰기가 성공하며 제공 데이터가 보존돼 있다.</label>
+          <label><input type="checkbox"> product 이미지 업로드 후 같은 endpoint의 /images/*에서 다운로드된다.</label>
+          <label><input type="checkbox"> HTTPS endpoint 하나로 세 API와 이미지가 제공된다.</label>
+          <label><input type="checkbox"> 비정상 /v1 요청은 403, 미제공 API는 404다.</label>
+          <label><input type="checkbox"> healthcheck, readiness/liveness probe, 로그와 CloudWatch 지표가 정상이다.</label>
+          <label><input type="checkbox"> endpoint는 프로토콜 포함, 경로·끝 슬래시 없이 제출했다.</label>
+          <label><input type="checkbox"> 개인 부하 테스트와 불필요한 임시 Pod/EC2를 종료했다.</label>
+        </div>
+      </section>
+
+      <section>
+        <p class="kicker">Troubleshooting</p><h2>안 될 때는 이 순서로 찾기</h2>
+        <div class="table-wrap"><table><thead><tr><th>증상</th><th>확인 순서</th></tr></thead><tbody>
+          <tr><td>ALB가 생성되지 않음</td><td>Controller Pod → IAM → subnet 태그 → Ingress event</td></tr>
+          <tr><td>ALB 503</td><td>Service endpoint → Pod readiness → target group health → SG</td></tr>
+          <tr><td>DB timeout</td><td>RDS endpoint/port → SG source → subnet route/NACL → env 값</td></tr>
+          <tr><td>이미지 403</td><td>product service account 역할 → S3 정책 → object key → region</td></tr>
+          <tr><td>응답이 느림</td><td>ALB TargetResponseTime → Pod CPU/memory → RDS latency/connections → 로그</td></tr>
+          <tr><td>특정 Pod만 오류</td><td><code>kubectl logs</code> → env/secret → node 상태 → restart count</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="sources">
+        <p class="kicker">Official references</p><h2>공식 문서</h2>
+        <ul><li><a href="https://docs.aws.amazon.com/eks/latest/userguide/aws-load-balancer-controller.html">AWS Load Balancer Controller</a></li><li><a href="https://docs.aws.amazon.com/eks/latest/userguide/alb-ingress.html">EKS에서 ALB로 HTTP/HTTPS 라우팅</a></li><li><a href="https://docs.aws.amazon.com/eks/latest/userguide/create-managed-node-group.html">EKS 관리형 노드 그룹 생성</a></li><li><a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html">S3 Block Public Access</a></li><li><a href="https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZSingleStandby.html">RDS Multi-AZ DB instance</a></li><li><a href="https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Container-Insights-EKS-logs.html">EKS Container Insights</a></li></ul>
+      </section>
+    </article>
+  </main>
+  <footer><p>교육용 공개 풀이 · 원문 요구사항과 실제 계정 제한을 먼저 확인하세요.</p><a href="#top">맨 위로 ↑</a></footer>
+</body>
+</html>
