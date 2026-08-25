@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>제3과제 콘솔 구축 실전 작업서</title><link rel="stylesheet" href="styles.css"></head>
+<body><header class="hero"><nav><a class="brand" href="./">← 전체 풀이</a><a href="#final">완료 점검</a></nav>
+<div class="hero-inner"><p class="eyebrow">CLICK-BY-CLICK BUILD BOOK</p><h1>콘솔에서<br><span>실제로 구축하기</span></h1>
+<p class="lead">어느 AWS 서비스의 어떤 메뉴에서 무엇을 입력해야 하는지, 생성 후 어떤 상태가 보여야 하는지 순서대로 안내합니다.</p>
+<div class="hero-actions"><a class="button primary" href="#prepare">1단계부터 시작</a><a class="button" href="#map">콘솔 작업 지도</a></div></div></header>
+<main><aside class="toc"><strong>구축 순서</strong><a href="#map">작업 지도</a><a href="#prepare">0. 준비</a><a href="#vpc">1. VPC</a><a href="#sg">2. 보안 그룹</a><a href="#rds">3. RDS</a><a href="#s3">4. S3</a><a href="#ecr">5. ECR</a><a href="#eks">6. EKS</a><a href="#node">7. Node Group</a><a href="#apps">8. 앱 배포</a><a href="#alb">9. ALB</a><a href="#dns">10. HTTPS</a><a href="#waf">11. WAF</a><a href="#monitor">12. 모니터링</a><a href="#final">13. 완료 점검</a></aside>
+<article><section class="notice"><b>과제 제한 우선</b> 모든 regional resource는 서울 리전, 컴퓨팅은 EC2만 사용합니다. Fargate·Lambda·EKS Auto Mode를 선택하지 않습니다. RDS는 db.t3.micro Multi-AZ DB instance Primary 1대, EKS node는 c5.large만 사용합니다.</section>
+
+<section id="map"><p class="kicker">BUILD MAP</p><h2>콘솔과 CloudShell 작업 지도</h2>
+<div class="table-wrap"><table><thead><tr><th>순서</th><th>작업 화면</th><th>결과</th></tr></thead><tbody>
+<tr><td>1</td><td>VPC Console</td><td>VPC, public/private subnet, IGW, NAT</td></tr><tr><td>2</td><td>EC2 Console</td><td>ALB/RDS security group</td></tr>
+<tr><td>3</td><td>RDS Console</td><td>MySQL Multi-AZ DB</td></tr><tr><td>4</td><td>S3 Console</td><td>private image bucket</td></tr>
+<tr><td>5</td><td>ECR Console + CloudShell</td><td>user/product/stress images</td></tr><tr><td>6</td><td>EKS Console</td><td>cluster와 c5.large node group</td></tr>
+<tr><td>7</td><td>CloudShell kubectl</td><td>Deployment, Service, Ingress</td></tr><tr><td>8</td><td>EC2/ACM/Route 53 Console</td><td>ALB와 HTTPS domain</td></tr>
+<tr><td>9</td><td>WAF/CloudWatch Console</td><td>403/404와 운영 지표</td></tr></tbody></table></div></section>
+
+<section id="prepare"><p class="kicker">STEP 0</p><h2>시작 전 화면과 메모표</h2>
+<ol class="steps"><li><b>리전</b><span>콘솔 오른쪽 위 → Asia Pacific (Seoul).</span></li><li><b>CloudShell</b><span>상단 검색창 오른쪽의 터미널 아이콘 → Open CloudShell.</span></li><li><b>확인</b><span><code>aws sts get-caller-identity</code>, <code>aws configure set region ap-northeast-2</code>.</span></li></ol>
+<p>아래 값은 만들 때마다 복사합니다: VPC ID, public/private subnet ID 4개, node security group ID, RDS endpoint, bucket name, Account ID, ACM certificate ARN, ALB DNS.</p>
+<div class="callout warning"><b>절대 기록 금지</b> DB password, access key, secret key는 문서나 GitHub에 저장하지 않습니다.</div></section>
+
+<section id="vpc"><p class="kicker">STEP 1 — VPC CONSOLE</p><h2>VPC와 subnet 만들기</h2>
+<p><b>이동:</b> 상단 검색창에 VPC → VPC dashboard → Create VPC → <strong>VPC and more</strong></p>
+<div class="table-wrap"><table><thead><tr><th>화면 필드</th><th>입력</th></tr></thead><tbody>
+<tr><td>Name tag</td><td><code>apdev</code></td></tr><tr><td>IPv4 CIDR</td><td><code>10.0.0.0/16</code></td></tr>
+<tr><td>Availability Zones</td><td>2</td></tr><tr><td>Public subnets</td><td>2</td></tr><tr><td>Private subnets</td><td>2</td></tr>
+<tr><td>NAT gateways</td><td>1 per AZ 권장</td></tr><tr><td>VPC endpoints</td><td>None</td></tr><tr><td>DNS options</td><td>Enable DNS hostnames/resolution 체크</td></tr></tbody></table></div>
+<p>Create VPC → 완료될 때까지 기다린 뒤 View VPC. Resource map에서 public subnet→IGW, private subnet→NAT 연결을 확인합니다.</p>
+<h3>subnet 태그</h3><p>VPC → Subnets → public subnet 각각 선택 → Tags → Manage tags → <code>kubernetes.io/role/elb</code> = <code>1</code>. private subnet에는 <code>kubernetes.io/role/internal-elb</code> = <code>1</code>.</p>
+<p><strong>완료 화면:</strong> Your VPCs에 apdev 1개, Subnets에 apdev 관련 4개, NAT gateways가 Available.</p></section>
+
+<section id="sg"><p class="kicker">STEP 2 — EC2 CONSOLE</p><h2>보안 그룹 만들기</h2>
+<p><b>이동:</b> EC2 → 왼쪽 Network & Security → Security Groups → Create security group</p>
+<h3>apdev-alb-sg</h3><p>VPC=apdev. Inbound rules → HTTPS, TCP 443, source Anywhere-IPv4. HTTP 80은 HTTPS redirect가 필요할 때만 추가합니다.</p>
+<h3>apdev-rds-sg</h3><p>VPC=apdev. 처음에는 inbound를 비워두고 생성합니다. EKS node group 생성 후 Edit inbound rules → MySQL/Aurora 3306 → Source=EKS node security group ID로 설정합니다.</p>
+<p><strong>완료 화면:</strong> RDS SG에 IP CIDR가 아니라 <code>sg-...</code>가 source로 보입니다.</p></section>
+
+<section id="rds"><p class="kicker">STEP 3 — RDS CONSOLE</p><h2>RDS MySQL 만들기</h2>
+<p><b>이동:</b> RDS → Databases → Create database → Standard create</p>
+<div class="table-wrap"><table><thead><tr><th>영역</th><th>선택</th></tr></thead><tbody>
+<tr><td>Engine</td><td>MySQL, version 8.0</td></tr><tr><td>Availability</td><td>Multi-AZ DB instance</td></tr>
+<tr><td>Identifier</td><td><code>apdev-rds-instance</code></td></tr><tr><td>Credentials</td><td>Self managed, username <code>appuser</code></td></tr>
+<tr><td>Instance class</td><td>Burstable → <code>db.t3.micro</code></td></tr><tr><td>Storage</td><td>General Purpose SSD gp3, 최소 용량</td></tr>
+<tr><td>Connectivity</td><td>apdev VPC, private DB subnet group, Public access No</td></tr><tr><td>VPC SG</td><td>Choose existing → apdev-rds-sg</td></tr>
+<tr><td>Additional configuration</td><td>Initial database name <code>dev</code>, port 3306</td></tr></tbody></table></div>
+<p>Create database. Databases 목록에서 Status=Available까지 기다립니다. DB 선택 → Connectivity & security → Endpoint를 복사합니다.</p>
+<pre><code>aws rds describe-db-instances --db-instance-identifier apdev-rds-instance \
+ --query 'DBInstances[0].{Class:DBInstanceClass,MultiAZ:MultiAZ,Public:PubliclyAccessible,Endpoint:Endpoint.Address}' --output table</code></pre>
+<p><strong>완료:</strong> db.t3.micro / MultiAZ true / Public false. Read replica가 없어야 합니다.</p></section>
+
+<section id="s3"><p class="kicker">STEP 4 — S3 CONSOLE</p><h2>이미지 bucket 만들기</h2>
+<p><b>이동:</b> S3 → Buckets → Create bucket. Region=ap-northeast-2, 이름은 전 세계에서 유일한 값(예: <code>apdev-images-ACCOUNT_ID</code>). Object Ownership=ACLs disabled. Block all public access=체크 유지. Bucket Versioning=Enable.</p>
+<p>Create bucket → bucket → Properties에서 region 확인 → Permissions에서 Block public access가 On인지 확인합니다. 정적 웹사이트 호스팅은 켜지 않습니다.</p>
+<p><strong>완료:</strong> S3 URL을 직접 공개하지 않아도 됩니다. product Pod가 IAM role로 읽고 동일 ALB의 <code>/images/*</code>에서 반환합니다.</p></section>
+
+<section id="ecr"><p class="kicker">STEP 5 — ECR + CLOUDSHELL</p><h2>저장소와 이미지 3개</h2>
+<p><b>이동:</b> Elastic Container Registry → Private registry → Repositories → Create repository. user, product, stress를 각각 생성하고 Scan on push를 켭니다.</p>
+<pre><code>ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION=ap-northeast-2
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+for APP in user product stress; do
+ docker build --platform linux/amd64 -t $APP:1.0 ./$APP
+ docker tag $APP:1.0 $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$APP:1.0
+ docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$APP:1.0
+done</code></pre>
+<p><strong>완료 화면:</strong> 각 repository의 Images 탭에 tag <code>1.0</code>, architecture amd64 이미지가 있습니다.</p></section>
+
+<section id="eks"><p class="kicker">STEP 6 — EKS CONSOLE</p><h2>EKS cluster 만들기</h2>
+<p><b>이동:</b> Elastic Kubernetes Service → Clusters → Create cluster → Custom configuration.</p>
+<div class="table-wrap"><table><thead><tr><th>필드</th><th>값</th></tr></thead><tbody>
+<tr><td>Name</td><td><code>apdev-eks</code></td></tr><tr><td>Cluster IAM role</td><td>EKS cluster용 role</td></tr>
+<tr><td>Kubernetes version</td><td>콘솔의 지원 안정 버전</td></tr><tr><td>Cluster compute</td><td>Auto Mode 사용 안 함</td></tr>
+<tr><td>VPC</td><td>apdev</td></tr><tr><td>Subnets</td><td>private subnet 2개 중심</td></tr>
+<tr><td>Endpoint access</td><td>작업 환경에 맞게 Public 또는 Public+Private</td></tr><tr><td>Control plane logs</td><td>api, audit, authenticator 권장</td></tr></tbody></table></div>
+<p>Create. Overview의 Status=Active까지 기다립니다. Fargate profiles 탭에 항목이 없어야 합니다.</p></section>
+
+<section id="node"><p class="kicker">STEP 7 — EKS NODE GROUP</p><h2>c5.large node 2대</h2>
+<p><b>이동:</b> EKS → apdev-eks → Compute 탭 → Add node group</p>
+<p>Name=<code>apdev-c5</code>, Node IAM role=EKS worker node role. AMI=Amazon Linux, Capacity type=On-Demand, Instance type는 <strong>c5.large만</strong>. Disk=gp3 30GiB. Desired/Minimum/Maximum=2/2/2. private subnet 2개를 선택하고 Create.</p>
+<p>Status=Active 후 EC2 → Instances에서 EKS node 2대의 Instance type이 모두 c5.large인지 확인합니다. 이때 node SG ID를 복사하여 앞의 apdev-rds-sg 3306 source로 넣습니다.</p>
+<pre><code>aws eks update-kubeconfig --region ap-northeast-2 --name apdev-eks
+kubectl get nodes -L node.kubernetes.io/instance-type,topology.kubernetes.io/zone</code></pre></section>
+
+<section id="apps"><p class="kicker">STEP 8 — CLOUDSHELL</p><h2>DB 적재와 애플리케이션 배포</h2>
+<p>CloudShell에서 kubectl을 사용합니다. DB는 private이므로 mysql client 작업은 EKS 임시 Pod에서 합니다.</p>
+<pre><code>kubectl create namespace apdev
+kubectl -n apdev run mysql-client --rm -it --restart=Never --image=mysql:8.0 --  mysql -h RDS_ENDPOINT -u appuser -p dev</code></pre>
+<p>연결되면 과제지 schema와 제공 load_user.dump를 적용합니다. 제공 데이터는 수정·삭제하지 않습니다.</p>
+<pre><code>kubectl -n apdev create secret generic mysql-secret  --from-literal=MYSQL_USER=appuser --from-literal=MYSQL_PASSWORD='PASSWORD'  --from-literal=MYSQL_HOST=RDS_ENDPOINT --from-literal=MYSQL_PORT=3306  --from-literal=MYSQL_DBNAME=dev
+kubectl apply --dry-run=client -f k8s/
+kubectl apply -f k8s/
+kubectl -n apdev get deploy,pod,svc,endpoints
+kubectl -n apdev logs deploy/user --tail=30</code></pre>
+<p>Service는 세 개 모두 ClusterIP입니다. ENDPOINTS가 none이면 Service selector와 Pod label을 맞춥니다. product에는 S3 최소 권한의 IRSA/Pod Identity service account를 연결합니다.</p></section>
+
+<section id="alb"><p class="kicker">STEP 9 — CLOUDSHELL + EC2</p><h2>Load Balancer Controller와 Ingress</h2>
+<p>AWS 공식 EKS 문서 순서로 controller IAM policy와 service account를 만든 뒤 Helm으로 설치합니다. 설치 후:</p>
+<pre><code>kubectl -n kube-system rollout status deploy/aws-load-balancer-controller
+kubectl apply -f ingress.yaml
+kubectl -n apdev describe ingress apdev
+kubectl -n apdev get ingress -w</code></pre>
+<p><b>콘솔 이동:</b> EC2 → Load Balancers. internet-facing Application Load Balancer 1개가 생성되고 Listener 443, target groups의 target이 Healthy여야 합니다. ALB가 없으면 controller log → IAM AccessDenied → subnet 태그 → Ingress Events 순서로 확인합니다.</p></section>
+
+<section id="dns"><p class="kicker">STEP 10 — ACM / ROUTE 53</p><h2>HTTPS AWS domain 연결</h2>
+<p><b>ACM:</b> Certificate Manager → Request → Public certificate → 계정에서 사용할 AWS domain 입력 → DNS validation. Status=Issued까지 기다립니다.</p>
+<p><b>Route 53:</b> Hosted zones → 해당 zone → Create record → Alias On → Route traffic to Application Load Balancer → Seoul → apdev ALB 선택.</p>
+<p>Ingress annotation의 certificate ARN을 ACM ARN으로 설정합니다. 채점 endpoint는 <code>https://도메인</code>만 제출하며 끝 슬래시와 경로를 붙이지 않습니다.</p></section>
+
+<section id="waf"><p class="kicker">STEP 11 — WAF CONSOLE</p><h2>비정상 403, 없는 API 404</h2>
+<p>WAF & Shield → Web ACLs → Create web ACL → Regional resources → apdev ALB 연결. Default action은 Allow. <code>/v1/user</code>, <code>/v1/product</code>, <code>/v1/stress</code>에서 허용하지 않은 method/형식만 Block하도록 규칙을 만듭니다.</p>
+<p>Default Block을 사용하면 <code>/v1/none</code>도 403이 되므로 과제 요구와 어긋납니다. WAF → Web ACL → Sampled requests에서 어떤 규칙이 차단했는지 확인합니다.</p>
+<pre><code>curl -i https://AWS_DOMAIN/v1/user
+curl -i https://AWS_DOMAIN/v1/none
+# 첫 요청은 규격 위반이면 403, 두 번째는 404여야 함</code></pre></section>
+
+<section id="monitor"><p class="kicker">STEP 12 — CLOUDWATCH</p><h2>운영 화면 구성</h2>
+<p>CloudWatch → Metrics → All metrics → ApplicationELB에서 TargetResponseTime, Target 5XX, HealthyHostCount를 그래프로 추가합니다. RDS metrics에서 CPUUtilization, DatabaseConnections, FreeStorageSpace, ReadLatency, WriteLatency를 추가합니다.</p>
+<p>CloudWatch → Alarms → Create alarm에서 ALB 5XX와 unhealthy host 알람을 설정합니다. EKS control plane log는 CloudWatch Logs의 <code>/aws/eks/apdev-eks/cluster</code>에서 확인합니다.</p></section>
+
+<section id="final"><p class="kicker">STEP 13</p><h2>“구축 완료” 판정표</h2>
+<div class="checklist"><label><input type="checkbox"> VPC 1개, public/private subnet 각 2개와 정상 route</label><label><input type="checkbox"> RDS Available, db.t3.micro, Multi-AZ, Public No, replica 없음</label><label><input type="checkbox"> ECR 세 저장소에 amd64 이미지</label><label><input type="checkbox"> EKS Active, Fargate profile 없음, c5.large node 2대 Ready</label><label><input type="checkbox"> 세 Deployment Available, Service endpoint 존재, Pod probe 정상</label><label><input type="checkbox"> ALB 1개, HTTPS listener, 모든 target Healthy</label><label><input type="checkbox"> 동일 domain에서 user/product/stress/images 동작</label><label><input type="checkbox"> 비정상 요청 403, 없는 API 404</label><label><input type="checkbox"> CloudWatch 지표와 로그 확인</label><label><input type="checkbox"> 불필요 EC2/VPC/다른 리전/Fargate/Lambda 없음</label></div></section>
+</article></main><footer><p>제3과제 콘솔 구축 실전 작업서</p><a href="./">전체 풀이로 돌아가기</a></footer></body></html>
