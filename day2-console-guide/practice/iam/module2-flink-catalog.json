@@ -1,0 +1,37 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "glue:GetDatabase",
+        "glue:GetDatabases",
+        "glue:GetTable",
+        "glue:GetTables",
+        "glue:GetPartitions",
+        "glue:CreateTable",
+        "glue:UpdateTable",
+        "glue:DeleteTable"
+      ],
+      "Resource": [
+        "arn:aws:glue:ap-northeast-2:REPLACE_ACCOUNT_ID:catalog",
+        "arn:aws:glue:ap-northeast-2:REPLACE_ACCOUNT_ID:database/analytics_db",
+        "arn:aws:glue:ap-northeast-2:REPLACE_ACCOUNT_ID:table/analytics_db/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "logs:DescribeLogGroups",
+      "Resource": "arn:aws:logs:ap-northeast-2:REPLACE_ACCOUNT_ID:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogStreams",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:ap-northeast-2:REPLACE_ACCOUNT_ID:log-group:/aws/kinesis-analytics/wsc2026-analytics-flink:*"
+    }
+  ]
+}

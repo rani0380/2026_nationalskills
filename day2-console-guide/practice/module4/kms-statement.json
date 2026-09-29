@@ -1,0 +1,14 @@
+{
+  "Sid": "AllowCloudFrontDecrypt",
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "cloudfront.amazonaws.com"
+  },
+  "Action": "kms:Decrypt",
+  "Resource": "*",
+  "Condition": {
+    "StringEquals": {
+      "AWS:SourceArn": "arn:aws:cloudfront::REPLACE_ACCOUNT_ID:distribution/REPLACE_DISTRIBUTION_ID"
+    }
+  }
+}

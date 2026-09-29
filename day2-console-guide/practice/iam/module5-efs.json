@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "elasticfilesystem:ClientMount",
+        "elasticfilesystem:ClientWrite"
+      ],
+      "Resource": "arn:aws:elasticfilesystem:eu-central-1:REPLACE_ACCOUNT_ID:file-system/REPLACE_EFS_ID",
+      "Condition": {
+        "StringEquals": {
+          "elasticfilesystem:AccessPointArn": "arn:aws:elasticfilesystem:eu-central-1:REPLACE_ACCOUNT_ID:access-point/REPLACE_ACCESS_POINT_ID"
+        }
+      }
+    }
+  ]
+}

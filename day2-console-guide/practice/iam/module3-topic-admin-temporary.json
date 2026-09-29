@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kafka-cluster:Connect",
+        "kafka-cluster:DescribeCluster"
+      ],
+      "Resource": "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:cluster/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kafka-cluster:CreateTopic",
+        "kafka-cluster:DescribeTopic"
+      ],
+      "Resource": [
+        "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:topic/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID/wsc2026-sensor-raw",
+        "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:topic/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID/wsc2026-sensor-alert"
+      ]
+    }
+  ]
+}

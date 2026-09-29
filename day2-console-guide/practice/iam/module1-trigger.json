@@ -1,0 +1,10 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "states:StartExecution",
+      "Resource": "arn:aws:states:ap-southeast-1:REPLACE_ACCOUNT_ID:stateMachine:wsc2026-student-score-workflow"
+    }
+  ]
+}

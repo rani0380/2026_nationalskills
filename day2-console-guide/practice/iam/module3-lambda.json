@@ -1,0 +1,77 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kafka:DescribeClusterV2",
+        "kafka:GetBootstrapBrokers"
+      ],
+      "Resource": "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:cluster/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kafka-cluster:Connect",
+        "kafka-cluster:DescribeCluster"
+      ],
+      "Resource": "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:cluster/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kafka-cluster:ReadData",
+        "kafka-cluster:DescribeTopic"
+      ],
+      "Resource": [
+        "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:topic/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID/wsc2026-sensor-raw",
+        "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:topic/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID/wsc2026-sensor-alert"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "kafka-cluster:WriteData",
+      "Resource": "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:topic/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID/wsc2026-sensor-alert"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kafka-cluster:DescribeGroup",
+        "kafka-cluster:AlterGroup"
+      ],
+      "Resource": [
+        "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:group/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID/wsc2026-raw-consumer",
+        "arn:aws:kafka:ap-northeast-1:REPLACE_ACCOUNT_ID:group/wsc2026-msk-cluster/REPLACE_CLUSTER_UUID/wsc2026-alert-consumer"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "dynamodb:PutItem",
+      "Resource": "arn:aws:dynamodb:ap-northeast-1:REPLACE_ACCOUNT_ID:table/wsc2026-sensor-data"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::REPLACE_ALERT_BUCKET/alert/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:ap-northeast-1:REPLACE_ACCOUNT_ID:wsc2026-sensor-alerts"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateNetworkInterface",
+        "ec2:DeleteNetworkInterface",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "ec2:AssignPrivateIpAddresses",
+        "ec2:UnassignPrivateIpAddresses"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

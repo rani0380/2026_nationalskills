@@ -1,0 +1,14 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><title>CDN 갱신 확인</title>
+<h1>CDN 이미지 갱신 확인</h1><p>같은 URL을 10초마다 다시 요청합니다.</p>
+<img id="photo" alt="실습 이미지" src="/static/image.png" style="max-width:80vw">
+<p id="stamp"></p><script>
+setInterval(async()=>{
+ const r=await fetch('/static/image.png',{cache:'no-store'});
+ if(!r.ok)return;
+ const u=URL.createObjectURL(await r.blob());
+ const img=document.getElementById('photo');
+ const old=img.src;img.src=u;
+ if(old.startsWith('blob:'))URL.revokeObjectURL(old);
+ document.getElementById('stamp').textContent=new Date().toLocaleTimeString();
+},10000);
+</script></html>

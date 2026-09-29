@@ -1,0 +1,163 @@
+{
+  "Comment": "Console example for input/test.csv; simple one-level ASCII file names",
+  "QueryLanguage": "JSONPath",
+  "StartAt": "CheckS3File",
+  "TimeoutSeconds": 55,
+  "States": {
+    "CheckS3File": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:s3:headObject",
+      "Parameters": {
+        "Bucket": "REPLACE_STUDENT_BUCKET",
+        "Key.$": "$.key"
+      },
+      "ResultPath": null,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "Fail"
+        }
+      ],
+      "Next": "ProcessStudentData"
+    },
+    "ProcessStudentData": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:ap-southeast-1:REPLACE_ACCOUNT_ID:function:wsc2026-student-score-function",
+        "Payload": {
+          "key.$": "$.key"
+        }
+      },
+      "ResultSelector": {
+        "statusCode.$": "$.Payload.statusCode",
+        "processed.$": "$.Payload.processed",
+        "errors.$": "$.Payload.errors"
+      },
+      "ResultPath": "$.result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "MoveToError"
+        }
+      ],
+      "Next": "CheckResult"
+    },
+    "CheckResult": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.result.statusCode",
+          "NumericEquals": 200,
+          "Next": "MoveToProcessed"
+        }
+      ],
+      "Default": "MoveToError"
+    },
+    "End": {
+      "Type": "Succeed"
+    },
+    "Fail": {
+      "Type": "Fail",
+      "Error": "WorkflowFailed",
+      "Cause": "Inspect execution history and S3 error prefix"
+    },
+    "MoveToProcessed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:s3:copyObject",
+      "Parameters": {
+        "Bucket": "REPLACE_STUDENT_BUCKET",
+        "CopySource.$": "States.Format('REPLACE_STUDENT_BUCKET/{}', $.key)",
+        "Key.$": "States.Format('processed/{}', States.ArrayGetItem(States.StringSplit($.key, '/'), 1))"
+      },
+      "ResultPath": null,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "Fail"
+        }
+      ],
+      "Next": "DeleteProcessedInput"
+    },
+    "DeleteProcessedInput": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:s3:deleteObject",
+      "Parameters": {
+        "Bucket": "REPLACE_STUDENT_BUCKET",
+        "Key.$": "$.key"
+      },
+      "ResultPath": null,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "Fail"
+        }
+      ],
+      "Next": "End"
+    },
+    "MoveToError": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:s3:copyObject",
+      "Parameters": {
+        "Bucket": "REPLACE_STUDENT_BUCKET",
+        "CopySource.$": "States.Format('REPLACE_STUDENT_BUCKET/{}', $.key)",
+        "Key.$": "States.Format('error/{}', States.ArrayGetItem(States.StringSplit($.key, '/'), 1))"
+      },
+      "ResultPath": null,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "Fail"
+        }
+      ],
+      "Next": "DeleteErrorInput"
+    },
+    "DeleteErrorInput": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:s3:deleteObject",
+      "Parameters": {
+        "Bucket": "REPLACE_STUDENT_BUCKET",
+        "Key.$": "$.key"
+      },
+      "ResultPath": null,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "Fail"
+        }
+      ],
+      "Next": "Fail"
+    }
+  }
+}
