@@ -680,3 +680,13 @@ h1 {
   .markdown-body .code-panel pre { padding:15px; }
   .markdown-body .code-panel pre code { font-size:12.5px; }
 }
+/* Consolidated learning navigation */
+.guide-actions { display:flex; flex-direction:column; gap:10px; }
+.library-link { margin-top:28px; }
+.library-link a, .library-list a, .version-notice a { color:var(--blue); text-decoration:underline; text-underline-offset:3px; }
+.library-list { padding-left:22px; }
+.library-list li { padding:12px 0; border-bottom:1px solid var(--line); }
+.archive-disclosure summary { cursor:pointer; font-weight:700; padding:18px 0; }
+.archive-disclosure .material-grid { margin-top:14px; }
+.version-notice { background:#fff7e8; border-left:4px solid var(--amber); padding:16px; }
+a:focus-visible, summary:focus-visible { outline:3px solid var(--blue); outline-offset:4px; }

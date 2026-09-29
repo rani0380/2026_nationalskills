@@ -16,7 +16,7 @@
         <div class="nav-links">
           <a href="#materials">자료</a>
           <a href="#guides">해설서</a>
-          <a href="cloud-course/">18차시 실습</a>
+          <a href="library.html">보충 자료</a>
           <a href="https://github.com/rani0380/2026_nationalskills">GitHub</a>
         </div>
       </nav>
@@ -28,15 +28,9 @@
           <span>클라우드컴퓨팅</span>
         </h1>
         <p class="hero-copy">
-          과제 원본, 배포 파일, 채점 스크립트, 풀이해설서와 이론설명서를 한곳에서 빠르게 찾을 수 있도록 정리한 GitHub Pages입니다.
+          공부할 과제를 선택하면 필요한 해설서로 바로 연결됩니다. 문제 원본과 배포 파일은 아래 자료실에서 찾을 수 있습니다.
         </p>
-        <div class="hero-actions" aria-label="빠른 이동">
-          <a class="button primary" href="day2-console-guide/">제2과제 콘솔 상세 해설서</a>
-          <a class="button primary" href="day3-system-operation/">제3과제 공개 풀이</a>
-          <a class="button primary" href="cloud-course/">18차시 실습과정</a>
-          <a class="button" href="#guides">해설서 보기</a>
-          <a class="button" href="#materials">회차별 자료 보기</a>
-        </div>
+        <div class="hero-actions" aria-label="빠른 이동"><a class="button primary" href="#guides">과제 선택하기</a><a class="button" href="#materials">원본 자료 찾기</a></div>
       </section>
     </header>
 
@@ -44,155 +38,30 @@
       <section class="section" id="guides" aria-labelledby="guides-title">
         <div class="section-heading">
           <p class="section-kicker">Guides</p>
-          <h2 id="guides-title">핵심 학습 문서</h2>
+          <h2 id="guides-title">어떤 과제를 공부하나요?</h2>
         </div>
 
         <div class="guide-grid">
-          <article class="guide-card accent-card">
-            <div>
-              <span class="badge">NEW · 초보자 콘솔 실습</span>
-              <h3>제2과제 콘솔 상세 해설서</h3>
-              <p>Workflow, 실시간 분석, MSK, CDN, Legacy 5개 과제를 콘솔 메뉴·입력값·확인 방법 순서로 안내합니다. PDF, 실습 코드, 채점 체크리스트를 제공합니다.</p>
-            </div>
-            <a href="day2-console-guide/">단계별 상세 해설서 열기</a>
-          </article>
-          <article class="guide-card accent-card">
-            <div>
-              <span class="badge">NEW · 공개 풀이</span>
-              <h3>제3과제 System operation 완전 풀이</h3>
-              <p>공개된 실제 과제지를 기준으로 0점 조건, VPC, RDS, ECR, EKS, S3, 단일 HTTPS endpoint, 403/404, 모니터링과 최종 검증을 처음부터 안내합니다.</p>
-            </div>
-            <a href="day3-system-operation/">제3과제 풀이 열기</a>
-          </article>
-          <article class="guide-card accent-card">
-            <div>
-              <span class="badge">18차시</span>
-              <h3>제3과제 AWS 클라우드컴퓨팅 실습과정</h3>
-              <p>VPC, RDS, Docker, ECR, EKS, ALB, S3부터 성능·비용 튜닝과 3시간 모의대회까지 단계별로 학습합니다.</p>
-            </div>
-            <a href="cloud-course/">실습과정 열기</a>
-          </article>
-
-          <article class="guide-card">
-            <div>
-              <span class="badge">상세</span>
-              <h3>1과제·2과제 상세 풀이집</h3>
-              <p>선별 과제의 채점 스크립트 기준 구성 순서, 핵심 명령, 검증 포인트를 정리했습니다. Word 문서 다운로드도 제공합니다.</p>
-            </div>
-            <a href="guide.html?doc=detailed">문서 열기</a>
-          </article>
-
-          <article class="guide-card accent-card">
-            <div>
-              <span class="badge">보강</span>
-              <h3>AWS 콘솔 + CLI 보강 풀이</h3>
-              <p>콘솔 화면 예시 이미지, 실제 CloudShell 변수 설정, KMS, VPC, S3, DynamoDB, EKS, CloudFront 구성 명령을 함께 정리했습니다.</p>
-            </div>
-            <a href="guide.html?doc=consoleCli">문서 열기</a>
-          </article>
-
-          <article class="guide-card">
-            <div>
-              <span class="badge">실습</span>
-              <h3>02_1과제_1등 상세 풀이</h3>
-              <p>Web Service Provisioning 과제를 VPC, S3, EKS, Lambda, ALB, CloudFront, Monitoring 순서로 더 자세히 풀었습니다.</p>
-            </div>
-            <a href="guide.html?doc=task02first">문서 열기</a>
-          </article>
-
-          <article class="guide-card accent-card">
-            <div>
-              <span class="badge">Release Candidate</span>
-              <h3>07_1과제 상세 풀이</h3>
-              <p>Lambda 함수 작성부터 ECR 이미지 보안 설정, Private EKS와 Pod Identity 구성까지 채점 기준에 맞춰 자세히 설명합니다.</p>
-            </div>
-            <a href="guide.html?doc=task07first">상세 풀이 열기</a>
-          </article>
-
-          <article class="guide-card accent-card">
-            <div>
-              <span class="badge">D-Day</span>
-              <h3>내일 변경과제 30% 대응센터</h3>
-              <p>최종 과제지를 받은 직후 변경점을 찾고 Module별 수정 항목과 채점 기준을 정리하는 시험 당일 전용 페이지입니다.</p>
-            </div>
-            <a href="guide.html?doc=task02tomorrow">대응센터 열기</a>
-          </article>
-          <article class="guide-card">
-            <div>
-              <span class="badge">풀이</span>
-              <h3>2과제 풀이해설서</h3>
-              <p>Workflow, 실시간 분석, 이벤트 자동복구, MSK 스트리밍까지 4개 모듈의 풀이와 이론을 정리했습니다.</p>
-            </div>
-            <a href="guide.html?doc=task02second">문서 열기</a>
-          </article>
-
-          <article class="guide-card">
-            <div>
-              <span class="badge">Module</span>
-              <h3>Module 1 Workflow</h3>
-              <p>S3 업로드 이벤트, Lambda 검증, DynamoDB 저장, Step Functions 파일 이동 흐름을 모듈 단위로 설명합니다.</p>
-            </div>
-            <a href="guide.html?doc=task02m1">문서 열기</a>
-          </article>
-
-          <article class="guide-card">
-            <div>
-              <span class="badge">Module</span>
-              <h3>Module 2 Analytics</h3>
-              <p>Private EC2 앱, ALB, Kinesis Data Stream, Managed Flink SQL 분석 구성을 모듈 단위로 설명합니다.</p>
-            </div>
-            <a href="guide.html?doc=task02m2">문서 열기</a>
-          </article>
-
-          <article class="guide-card">
-            <div>
-              <span class="badge">Module</span>
-              <h3>Module 3 Event Handling</h3>
-              <p>EventBridge, AWS Config, Lambda, SNS를 이용한 보안 이벤트 감지와 자동 복구를 설명합니다.</p>
-            </div>
-            <a href="guide.html?doc=task02m3">문서 열기</a>
-          </article>
-
-          <article class="guide-card">
-            <div>
-              <span class="badge">Module</span>
-              <h3>Module 4 MSK</h3>
-              <p>MSK IAM 인증, Kafka topic, Producer EC2, Lambda consumer, DynamoDB/S3/SNS 후처리를 설명합니다.</p>
-            </div>
-            <a href="guide.html?doc=task02m4">문서 열기</a>
-          </article>
-
-          <article class="guide-card">
-            <div>
-              <span class="badge">풀이</span>
-              <h3>1과제 풀이해설서</h3>
-              <p>구축 순서, 리소스명, Kubernetes 매니페스트 예시, 검증 명령, 실수 방지 체크리스트를 정리했습니다.</p>
-            </div>
-            <a href="guide.html?doc=solution">문서 열기</a>
-          </article>
-
-          <article class="guide-card">
-            <div>
-              <span class="badge">이론</span>
-              <h3>1과제 이론설명서</h3>
-              <p>VPC, CloudFront, WAF, EKS, DynamoDB, Lambda, KMS, Observability의 배경 이론을 시험 관점으로 설명했습니다.</p>
-            </div>
-            <a href="guide.html?doc=theory">문서 열기</a>
-          </article>
+<article class="guide-card"><div><span class="badge">문제 번호별 선택</span><h3>제1과제 · 구축 실습</h3><p>문제 세트가 서로 다릅니다. 보유한 문제지 번호에 맞춰 선택하세요.</p></div><div class="guide-actions"><a href="guide.html?doc=task02first">02번 문제 풀이 →</a><a href="guide.html?doc=task07first">07번 문제 풀이 →</a></div></article>
+<article class="guide-card"><div><span class="badge">5개 과제 · 30점</span><h3>제2과제 · 콘솔 상세 해설서</h3><p>Workflow, 실시간 분석, MSK, CDN, Legacy. 초보자용 작업 순서와 PDF·실습 코드를 한 문서에서 확인합니다.</p></div><div class="guide-actions"><a href="day2-console-guide/">제2과제 시작하기 →</a></div></article>
+<article class="guide-card"><div><span class="badge">공개 과제 풀이</span><h3>제3과제 · System operation</h3><p>공개 과제지 기준으로 네트워크, EKS, 서비스 배포, 모니터링과 최종 검증을 진행합니다.</p></div><div class="guide-actions"><a href="day3-system-operation/">제3과제 시작하기 →</a></div></article>
+<article class="guide-card"><div><span class="badge">수업용 과정</span><h3>기초부터 배우는 18차시 실습</h3><p>제3과제 구성을 수업 순서로 나눈 과정입니다. 개념과 구축 방법을 차근차근 연습할 때 선택하세요.</p></div><div class="guide-actions"><a href="cloud-course/">수업 과정 열기 →</a></div></article>
         </div>
+        <p class="library-link">추가 설명이 필요하면 <a href="library.html">보충 해설·이전 자료실 →</a></p>
       </section>
 
       <section class="section band" id="materials" aria-labelledby="materials-title">
         <div class="section-heading">
           <p class="section-kicker">Materials</p>
           <h2 id="materials-title">회차별 과제 자료</h2>
-          <p>각 폴더에는 문제지, 배포 파일, 채점 파일, 보조 자료가 포함되어 있습니다.</p>
+          <p>문제지에 적힌 회차를 확인한 뒤 해당 폴더를 선택하세요. 회차마다 요구사항이 다릅니다.</p>
         </div>
 
-        <div class="material-grid">
+        <p><a class="button" href="https://github.com/rani0380/2026_nationalskills/tree/main/day2_release_files">제2과제 배포 파일</a></p>
+        <details class="archive-disclosure"><summary>01~10 회차별 원본 자료 펼치기</summary><div class="material-grid">
           <a class="material-card featured" href="https://github.com/rani0380/2026_nationalskills/tree/main/03">
             <span class="number">03</span>
-            <strong>최신 1과제/2과제 세트</strong>
+            <strong>자료 03</strong>
             <span>EKS, Lambda, CloudFront, WAF, Observability 중심 자료</span>
           </a>
           <a class="material-card" href="https://github.com/rani0380/2026_nationalskills/tree/main/01">
@@ -241,22 +110,9 @@
             <span>추가 회차 자료</span>
           </a>
         </div>
+        </details>
       </section>
 
-      <section class="section" aria-labelledby="quick-title">
-        <div class="section-heading">
-          <p class="section-kicker">Checklist</p>
-          <h2 id="quick-title">1과제 빠른 확인 포인트</h2>
-        </div>
-
-        <div class="checklist">
-          <p><strong>네트워크</strong> VPC, Public/Private Subnet, IGW, NAT Gateway, Route Table을 서울 리전에 구성합니다.</p>
-          <p><strong>애플리케이션</strong> 지급 바이너리를 amd64 컨테이너 이미지로 빌드하고 ECR에 보관합니다.</p>
-          <p><strong>운영</strong> EKS Private Cluster, NodeGroup 분리, Pod Identity, Probe, PDB를 확인합니다.</p>
-          <p><strong>진입점</strong> CloudFront 하나로 S3 정적 페이지, ALB POST API, Lambda GET API를 연결합니다.</p>
-          <p><strong>관측성</strong> Prometheus, Alertmanager, Grafana, Fluent Bit, CloudWatch Logs를 연결합니다.</p>
-        </div>
-      </section>
     </main>
 
     <footer class="footer">

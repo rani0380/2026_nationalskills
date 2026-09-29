@@ -24,13 +24,13 @@ const docs = {
     file: "02_1과제_1등_상세풀이.md",
   },
   task02tomorrow: {
-    title: "내일 변경과제 30% 대응센터",
+    title: "변경과제 대응 체크리스트",
     description: "최종 과제 공개 직후 변경점을 찾고 4시간 안에 재구성하기 위한 비교표와 Module별 체크리스트입니다.",
     file: "02_2과제_내일변경_대응센터.md",
   },
   task02second: {
-    title: "제2과제 실제 출제본 30점 만점 풀이",
-    description: "실제 시험지 5개 모듈과 채점표 27개 세부항목·30점을 반영한 콘솔 및 CLI 만점 풀이입니다.",
+    title: "제2과제 기존 종합 풀이",
+    description: "기존 콘솔 및 CLI 풀이입니다. 최신 상세 해설과 비교할 때 참고하세요.",
     file: "task02-actual-exam.md",
   },
   task02m1: {
@@ -67,6 +67,15 @@ const selected = docs[docKey];
 document.title = `${selected.title} | 2026 전국기능경기대회 클라우드컴퓨팅`;
 document.getElementById("doc-title").textContent = selected.title;
 document.getElementById("doc-description").textContent = selected.description;
+const previousDay2 = ["task02second", "task02m1", "task02m2", "task02m3", "task02m4", "task02tomorrow"];
+if (previousDay2.includes(docKey)) {
+  const notice = document.createElement("p");
+  notice.className = "version-notice";
+  notice.innerHTML = '이 문서는 이전·부분 해설입니다. 현재 5개 과제의 학습 순서는 <a href="day2-console-guide/">제2과제 콘솔 상세 해설서</a>를 참고하세요.';
+  if (docKey === "task02m3") notice.append(' Event Handling은 현재 과제에서 삭제되었습니다.');
+  document.querySelector(".doc-title-wrap").append(notice);
+}
+
 
 for (const link of document.querySelectorAll("[data-doc-link]")) {
   if (link.dataset.docLink === docKey) {
