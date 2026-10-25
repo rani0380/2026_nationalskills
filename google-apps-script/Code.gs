@@ -1,4 +1,20 @@
 const SHEET_NAME = '채점결과';
+// 2027 지방 모의고사 제출은 아래 스프레드시트의 별도 탭에 기록합니다.
+const MOCK_SPREADSHEET_ID = '1kZURRJDtN9FKv1jQdMTBE6U70AtjC0dyctEa_fp7vZM';
+const MOCK_SHEET_NAME = '2027지방모의고사';
+const MOCK_HEADERS = [
+  '수신시각',
+  '학생 제출시각',
+  '과제',
+  '비번호',
+  '이름',
+  '학교/소속',
+  '점수',
+  '만점',
+  'AWS 계정',
+  '채점 결과',
+  '페이지 URL',
+];
 const HEADERS = [
   '수신시각',
   '학생 제출시각',
@@ -32,6 +48,19 @@ function doPost(e) {
       return jsonResponse({ ok: false, error: 'possible credential detected' });
     }
 
+    const taskKey = clean(params.taskKey, 50);
+    if (/^mock\d+t\d+$/.test(taskKey)) {
+      appendMockRow([
+        new Date(),
+        safeCell(submittedAt),
+        safeCell(taskName),
+        safeCell(studentNo),
+        safeCell(studentName),
+        safeCell(school),
+      ], scoreOutput, pageUrl);
+      return jsonResponse({ ok: true });
+    }
+
     const lock = LockService.getScriptLock();
     lock.waitLock(10000);
     try {
@@ -61,6 +90,33 @@ function doPost(e) {
   } catch (error) {
     console.error(error);
     return jsonResponse({ ok: false, error: String(error) });
+  }
+}
+
+function appendMockRow(head, scoreOutput, pageUrl) {
+  const score = scoreOutput.match(/TOTAL SCORE:\s*([\d.]+)\s*\/\s*([\d.]+)/);
+  const account = scoreOutput.match(/계정:\s*(\d{12})/);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const spreadsheet = SpreadsheetApp.openById(MOCK_SPREADSHEET_ID);
+    let sheet = spreadsheet.getSheetByName(MOCK_SHEET_NAME);
+    if (!sheet) {
+      sheet = spreadsheet.insertSheet(MOCK_SHEET_NAME);
+    }
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(MOCK_HEADERS);
+      sheet.setFrozenRows(1);
+    }
+    sheet.appendRow(head.concat([
+      score ? Number(score[1]) : '',
+      score ? Number(score[2]) : '',
+      account ? "'" + account[1] : '',
+      safeCell(scoreOutput),
+      safeCell(pageUrl),
+    ]));
+  } finally {
+    lock.releaseLock();
   }
 }
 

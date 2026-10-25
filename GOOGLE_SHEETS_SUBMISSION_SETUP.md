@@ -50,3 +50,23 @@ window.SCORE_SUBMISSION_CONFIG = Object.freeze({
 - 사이트와 Apps Script 양쪽에서 일반적인 AWS 자격 증명 패턴을 검사합니다.
 - 공개 Web App URL에는 비밀키를 넣지 않습니다.
 - 시트 공유 권한은 교사 계정만 볼 수 있도록 유지합니다.
+
+## 2027 지방 모의고사 제출 연결
+
+모의고사 페이지(`guide.html?doc=mock1t1`, `mock1t2`)의 제출은 기존 endpoint를 그대로 쓰고, Apps Script가 `taskKey`가 `mock`으로 시작하는 제출만 아래 시트로 보냅니다.
+
+- 스프레드시트: `1kZURRJDtN9FKv1jQdMTBE6U70AtjC0dyctEa_fp7vZM`
+- 탭: `2027지방모의고사` (첫 제출 때 자동 생성)
+- 컬럼: 수신시각, 학생 제출시각, 과제, 비번호, 이름, 학교/소속, 점수, 만점, AWS 계정, 채점 결과, 페이지 URL
+- 점수는 채점 스크립트 마지막 줄 `TOTAL SCORE: x / 50`에서 자동 추출합니다.
+
+적용 방법 (URL이 바뀌지 않는 방식)
+
+1. 현재 endpoint를 배포한 Apps Script 프로젝트를 엽니다.
+2. `Code.gs`를 저장소의 `google-apps-script/Code.gs`로 바꿔 붙여넣고 저장합니다.
+3. `배포 → 배포 관리 → (연필) 편집 → 버전: 새 버전 → 배포`를 누릅니다.
+4. `SpreadsheetApp.openById` 권한 승인 창이 뜨면 승인합니다. 배포 계정이 위 시트의 편집 권한을 가져야 합니다.
+
+새 배포를 만들면 URL이 바뀌므로 `assets/submission-config.js`도 함께 바꿔야 합니다.
+
+학생이 붙여넣은 출력은 수정이 가능하므로, 점수가 의심스러우면 `채점 결과` 칸의 항목별 O/X와 `AWS 계정` 값을 확인하세요.

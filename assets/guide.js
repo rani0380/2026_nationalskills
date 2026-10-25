@@ -53,6 +53,16 @@ const docs = {
     description: "Amazon MSK, Kafka topic, Producer EC2, Lambda consumer로 스트리밍 파이프라인을 구성하는 모듈별 설명서입니다.",
     file: "02_2과제_Module4_MSK_설명서.md",
   },
+  mock1t1: {
+    title: "2027 지방 모의고사 1회 · 제1과제",
+    description: "Solution architecture · 4시간 · 50점. ECS Fargate, ALB, Aurora MySQL, Secrets Manager로 주문 시스템을 구축합니다.",
+    file: "mock2027/mock1-task1.md",
+  },
+  mock1t2: {
+    title: "2027 지방 모의고사 1회 · 제2과제",
+    description: "Small challenge · 4시간 · 50점. CloudFront·WAF, Step Functions, EventBridge 자동화, 조건부 IAM 정책 4문항입니다.",
+    file: "mock2027/mock1-task2.md",
+  },
   consoleCli: {
     title: "AWS 콘솔 + CLI 보강 풀이",
     description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",
@@ -94,13 +104,28 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
     const content = document.getElementById("content");
     content.innerHTML = renderMarkdown(markdown);
     enhanceCodeBlocks(content);
-    if (["task02first", "task02second", "task02m1", "task02m2", "task02m3", "task02m4"].includes(docKey)) {
+    if (["task02first", "task02second", "task02m1", "task02m2", "task02m3", "task02m4"].includes(docKey) || mockExams[docKey]) {
       mountScoreSubmissionForm(docKey);
     }
   })
   .catch((error) => {
     document.getElementById("content").innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
   });
+
+const mockExams = {
+  mock1t1: {
+    taskName: "2027모의1회_제1과제",
+    script: "mock1-1_mark.sh",
+    place: "Bastion(cafe-bastion)",
+    run: "bash ~/mock1-1_mark.sh",
+  },
+  mock1t2: {
+    taskName: "2027모의1회_제2과제",
+    script: "mock1-2_mark.sh",
+    place: "서울 리전 CloudShell",
+    run: "bash ~/mock1-2_mark.sh <비번호>",
+  },
+};
 
 function mountScoreSubmissionForm(activeTaskKey) {
   const baseConfig = window.SCORE_SUBMISSION_CONFIG || {};
@@ -111,6 +136,8 @@ function mountScoreSubmissionForm(activeTaskKey) {
     task02m2: "02_2과제_Module2_Analytics",
     task02m3: "02_2과제_Module3_EventHandling",
     task02m4: "02_2과제_Module4_MSK",
+    mock1t1: mockExams.mock1t1.taskName,
+    mock1t2: mockExams.mock1t2.taskName,
   };
   const config = {
     ...baseConfig,
@@ -168,7 +195,16 @@ bash ~/mark.sh</code></pre>
   `;
 
   document.getElementById("content").appendChild(section);
-  if (activeTaskKey !== "task02first") {
+  const mock = mockExams[activeTaskKey];
+  if (mock) {
+    const url = "https://rani0380.github.io/2026_nationalskills/downloads/mock2027/" + mock.script;
+    section.querySelector(".score-submit__download").innerHTML = `
+      <strong>채점 스크립트 준비</strong>
+      <p><a class="score-submit__secondary" href="downloads/mock2027/${mock.script}" download="${mock.script}">${mock.script} 다운로드</a></p>
+      <p>${escapeHtml(mock.place)}에서 아래 명령을 실행하고, 출력 전체를 아래 칸에 붙여넣으세요. 마지막 줄의 TOTAL SCORE가 점수입니다.</p>
+      <pre><code>curl -fL "${url}" -o ~/${mock.script}
+${escapeHtml(mock.run)}</code></pre>`;
+  } else if (activeTaskKey !== "task02first") {
     section.querySelector(".score-submit__download")?.remove();
   }
   const moduleDownloads = {
