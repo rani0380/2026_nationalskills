@@ -63,6 +63,16 @@ const docs = {
     description: "Small challenge · 4시간 · 50점. CloudFront·WAF, Step Functions, EventBridge 자동화, 조건부 IAM 정책 4문항입니다.",
     file: "mock2027/mock1-task2.md",
   },
+  mock2t1: {
+    title: "2027 지방 모의고사 2회 · 제1과제",
+    description: "Container platform · 4시간 · 50점. Private EKS, AWS Load Balancer Controller, Pod Identity, DynamoDB, Fluent Bit로 예매 API를 구축합니다.",
+    file: "mock2027/mock2-task1.md",
+  },
+  mock2t2: {
+    title: "2027 지방 모의고사 2회 · 제2과제",
+    description: "Small challenge · 4시간 · 50점. Terraform, Firehose·Glue·Athena, API Gateway·Lambda, SSM 일괄 운영 4문항입니다.",
+    file: "mock2027/mock2-task2.md",
+  },
   consoleCli: {
     title: "AWS 콘솔 + CLI 보강 풀이",
     description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",
@@ -125,6 +135,18 @@ const mockExams = {
     place: "서울 리전 CloudShell",
     run: "bash ~/mock1-2_mark.sh <비번호>",
   },
+  mock2t1: {
+    taskName: "2027모의2회_제1과제",
+    script: "mock2-1_mark.sh",
+    place: "Bastion(ticket-bastion, ec2-user)",
+    run: "bash ~/mock2-1_mark.sh",
+  },
+  mock2t2: {
+    taskName: "2027모의2회_제2과제",
+    script: "mock2-2_mark.sh",
+    place: "iac-bastion(ec2-user)",
+    run: "bash ~/mock2-2_mark.sh <비번호>",
+  },
 };
 
 function mountScoreSubmissionForm(activeTaskKey) {
@@ -138,6 +160,8 @@ function mountScoreSubmissionForm(activeTaskKey) {
     task02m4: "02_2과제_Module4_MSK",
     mock1t1: mockExams.mock1t1.taskName,
     mock1t2: mockExams.mock1t2.taskName,
+    mock2t1: mockExams.mock2t1.taskName,
+    mock2t2: mockExams.mock2t2.taskName,
   };
   const config = {
     ...baseConfig,
