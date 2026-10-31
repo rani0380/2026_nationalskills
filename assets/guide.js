@@ -73,6 +73,21 @@ const docs = {
     description: "Small challenge · 4시간 · 50점. Terraform, Firehose·Glue·Athena, API Gateway·Lambda, SSM 일괄 운영 4문항입니다.",
     file: "mock2027/mock2-task2.md",
   },
+  mock3t1: {
+    title: "2027 지방 모의고사 3회 · 제1과제",
+    description: "SkillsDocs · 4시간 · 50점. ECS Fargate·ALB·DynamoDB 기반 문서 접수 API. 설정 자동 점검 30점 + 교사 실기 20점.",
+    file: "mock2027/mock3-task1.md",
+  },
+  mock3t2: {
+    title: "2027 지방 모의고사 3회 · 제2과제",
+    description: "SkillsDocs 운영 · 4시간 · 50점. S3·SQS·Lambda, 백업 복구, 조건부 IAM, CloudWatch. 설정 자동 점검 30점 + 교사 실기 20점.",
+    file: "mock2027/mock3-task2.md",
+  },
+  mock3solutions: {
+    title: "2027 지방 모의고사 3회 · 교사용 풀이",
+    description: "구축 순서, 코드·정책 예시, 동작 확인과 부분점수 기준. 응시 후 확인하세요.",
+    file: "mock2027/mock3-solutions.md",
+  },
   consoleCli: {
     title: "AWS 콘솔 + CLI 보강 풀이",
     description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",
@@ -123,6 +138,20 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
   });
 
 const mockExams = {
+  mock3t1: {
+    taskName: "2027모의3회_제1과제",
+    script: "mock3-1_mark.sh",
+    place: "서울 리전 CloudShell (설정 30점 + 교사 실기 20점)",
+    run: "bash ~/mock3-1_mark.sh <비번호>\n# 교사 평가 후 영역별 점수 입력 (상한 4,4,6,4,2)\n# bash ~/mock3-1_mark.sh <비번호> 3,3,5,3,1",
+    manual: true,
+  },
+  mock3t2: {
+    taskName: "2027모의3회_제2과제",
+    script: "mock3-2_mark.sh",
+    place: "서울 리전 CloudShell (설정 30점 + 교사 실기 20점)",
+    run: "bash ~/mock3-2_mark.sh <비번호>\n# 교사 평가 후 영역별 점수 입력 (상한 8,4,6,2)\n# bash ~/mock3-2_mark.sh <비번호> 6,3,4,1",
+    manual: true,
+  },
   mock1t1: {
     taskName: "2027모의1회_제1과제",
     script: "mock1-1_mark.sh",
@@ -158,6 +187,8 @@ function mountScoreSubmissionForm(activeTaskKey) {
     task02m2: "02_2과제_Module2_Analytics",
     task02m3: "02_2과제_Module3_EventHandling",
     task02m4: "02_2과제_Module4_MSK",
+    mock3t1: mockExams.mock3t1.taskName,
+    mock3t2: mockExams.mock3t2.taskName,
     mock1t1: mockExams.mock1t1.taskName,
     mock1t2: mockExams.mock1t2.taskName,
     mock2t1: mockExams.mock2t1.taskName,
@@ -225,7 +256,7 @@ bash ~/mark.sh</code></pre>
     section.querySelector(".score-submit__download").innerHTML = `
       <strong>채점 스크립트 준비</strong>
       <p><a class="score-submit__secondary" href="downloads/mock2027/${mock.script}" download="${mock.script}">${mock.script} 다운로드</a></p>
-      <p>${escapeHtml(mock.place)}에서 아래 명령을 실행하고, 출력 전체를 아래 칸에 붙여넣으세요. 마지막 줄의 TOTAL SCORE가 점수입니다.</p>
+      <p>${escapeHtml(mock.place)}에서 아래 명령을 실행하고, 출력 전체를 아래 칸에 붙여넣으세요. ${mock.manual ? "교사 실기 점수를 입력한 최종 실행에서만 TOTAL SCORE가 출력됩니다. 실기 미평가 또는 ERROR가 있는 결과는 최종 점수로 제출하지 마세요." : "마지막 줄의 TOTAL SCORE가 점수입니다."}</p>
       <pre><code>curl -fL "${url}" -o ~/${mock.script}
 ${escapeHtml(mock.run)}</code></pre>`;
   } else if (activeTaskKey !== "task02first") {
@@ -281,6 +312,12 @@ ${escapeHtml(mock.run)}</code></pre>`;
       return;
     }
     const output = form.elements.scoreOutput.value;
+    if (mock?.manual && (!/^TOTAL SCORE:\s*(?:[0-4]?\d|50)\/50\s*$/m.test(output) || /^ERROR|^INCOMPLETE/m.test(output))) {
+      event.preventDefault();
+      status.textContent = "교사 실기 평가가 포함된 최종 TOTAL SCORE와 오류 없는 결과를 제출하세요.";
+      status.classList.add("is-error");
+      return;
+    }
     if (containsPossibleSecret(output)) {
       event.preventDefault();
       status.textContent = "Access Key 또는 Secret/Session Token으로 보이는 내용이 있습니다. 민감정보를 제거한 뒤 제출하세요.";
