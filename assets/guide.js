@@ -83,6 +83,16 @@ const docs = {
     description: "SkillsDocs 운영 · 4시간 · 50점. S3·SQS·Lambda, 백업 복구, 조건부 IAM, CloudWatch. 설정 자동 점검 30점 + 교사 실기 20점.",
     file: "mock2027/mock3-task2.md",
   },
+  mock1solutions: {
+    title: "2027 지방 모의고사 1회 · 문제 해설집",
+    description: "제1·2과제 구축 순서, Dockerfile, 워크플로우·Lambda·IAM 예시와 검증 방법입니다.",
+    file: "mock2027/mock1-solutions.md",
+  },
+  mock2solutions: {
+    title: "2027 지방 모의고사 2회 · 문제 해설집",
+    description: "제1·2과제 EKS 매니페스트, Terraform, 데이터 분석·REST API·SSM 구현 해설입니다.",
+    file: "mock2027/mock2-solutions.md",
+  },
   mock3solutions: {
     title: "2027 지방 모의고사 3회 · 교사용 풀이",
     description: "구축 순서, 코드·정책 예시, 동작 확인과 부분점수 기준. 응시 후 확인하세요.",
