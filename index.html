@@ -8,8 +8,71 @@
       name="description"
       content="2026 전국기능경기대회 클라우드컴퓨팅 과제 자료, 풀이해설서, 이론설명서 모음">
     <link rel="stylesheet" href="assets/site.css">
+  <style>
+/* Homepage layout */
+.home-page { background:#f5f7fa; }
+.home-page .site-header { background:linear-gradient(120deg,#eef6f4 0%,#edf2fa 100%); }
+.home-page .nav,.home-page .hero,.home-page .section { max-width:1200px; }
+.home-page .hero { padding:58px 24px 62px; }
+.home-page .hero h1 { font-size:clamp(32px,4.4vw,56px); line-height:1.22; letter-spacing:-.04em; }
+.home-page .hero-copy { max-width:660px; font-size:17px; line-height:1.8; }
+.home-page .hero-actions { margin-top:26px; }
+.home-page .section { padding-top:48px; padding-bottom:48px; }
+.home-page .section-heading h2 { font-size:28px; letter-spacing:-.03em; }
+.home-page .guide-grid { display:block; }
+.mock-section { padding:28px; border:1px solid #d4e4df; border-radius:18px; background:#edf5f2; }
+.mock-heading { display:flex; justify-content:space-between; gap:20px; align-items:center; margin-bottom:24px; }
+.mock-heading h3 { margin:10px 0 8px; font-size:28px; letter-spacing:-.03em; }
+.mock-heading p { margin:0; color:var(--muted); }
+.exam-meta { flex-shrink:0; padding:8px 12px; border:1px solid #ccddd6; border-radius:8px; background:#ffffff90; font-size:13px; color:#385c50; font-weight:700; }
+.round-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.round-card { min-width:0; padding:22px; border:1px solid #dce5e1; border-radius:12px; background:white; box-shadow:0 4px 12px #173c2b05; }
+.round-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.round-number { color:#087c66; font-size:30px; font-weight:800; line-height:1.2; letter-spacing:-.04em; }
+.round-grading { color:#687c73; font-size:11px; font-weight:700; }
+.round-card h4 { margin:18px 0 4px; font-size:21px; }
+.round-description { margin:0 0 18px; color:var(--muted); font-size:12px; }
+.exam-link { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:76px; padding:12px 0; border-top:1px solid #edf0f3; font-size:14px; font-weight:650; line-height:1.45; overflow-wrap:anywhere; }
+.exam-link small { display:block; margin-bottom:4px; color:#728096; font-size:11px; font-weight:600; }
+.exam-link>span:last-child { color:#8895a5; }
+.exam-link:hover { color:var(--blue); }
+.solution-link { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; padding:11px 14px; border-radius:7px; background:#edf5f2; color:#08735d; font-size:13px; font-weight:800; }
+.solution-link:hover { background:#dceee6; }
+.grading-note { margin:20px 0 0; color:#5e746a; font-size:12px; }
+.home-page .course-heading { margin-top:44px; margin-bottom:22px; }
+.home-page .course-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start; }
+.home-page .guide-card { min-height:0; justify-content:flex-start; gap:18px; padding:24px; border-radius:12px; box-shadow:0 3px 12px #172c4805; }
+.home-page .guide-card h3 { margin:12px 0 8px; font-size:21px; letter-spacing:-.025em; }
+.home-page .guide-card p { margin:0; font-size:14px; line-height:1.8; }
+.home-page .guide-actions { flex-direction:row; flex-wrap:wrap; gap:10px 22px; padding-top:15px; border-top:1px solid #edf0f3; }
+.home-page .guide-actions a { font-size:14px; }
+.home-page .band { max-width:none; padding-left:max(24px,calc((100vw - 1200px)/2 + 24px)); padding-right:max(24px,calc((100vw - 1200px)/2 + 24px)); }
+.home-page .material-card { min-height:150px; border-radius:10px; }
+@media(max-width:900px) {
+  .round-grid { gap:12px; }
+  .round-card { padding:16px; }
+  .mock-section { padding:22px; }
+}
+@media(max-width:720px) {
+  .round-grid { grid-template-columns:1fr; }
+  .mock-heading { align-items:flex-start; flex-direction:column; gap:14px; }
+  .round-card { padding:20px; }
+  .home-page .course-grid { grid-template-columns:1fr; }
+  .home-page .hero { padding-top:38px; padding-bottom:42px; }
+  .home-page .section { padding-top:34px; padding-bottom:34px; }
+  .mock-section { padding:18px; }
+  .round-card h4 { margin-top:10px; }
+  .exam-link { min-height:68px; }
+  .home-page .nav-links { flex-wrap:wrap; gap:10px 18px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .home-page { scroll-behavior:auto; }
+  html:has(.home-page) { scroll-behavior:auto; }
+  .home-page .material-card { transition:none; }
+}
+</style>
   </head>
-  <body>
+  <body class="home-page">
     <header class="site-header">
       <nav class="nav" aria-label="주요 링크">
         <a class="brand" href="./">2026 Nationalskills</a>
@@ -42,7 +105,32 @@
         </div>
 
         <div class="guide-grid">
-<article class="guide-card"><div><span class="badge">2027 지방대회 대비 · 1~3회 공개</span><h3>2027 지방대회 모의고사</h3><p>기출 경향을 반영한 실전 모의고사입니다. 과제당 4시간·50점입니다. 1~2회는 자동 채점, 3회는 설정 자동 점검 30점과 교사 실기 평가 20점을 합산해 제출합니다. 다음 회차는 순서대로 공개됩니다.</p></div><div class="guide-actions"><a href="guide.html?doc=mock1t1">1회 제1과제 · Solution architecture →</a><a href="guide.html?doc=mock1t2">1회 제2과제 · Small challenge →</a><a href="guide.html?doc=mock2t1">2회 제1과제 · Container platform →</a><a href="guide.html?doc=mock2t2">2회 제2과제 · Small challenge →</a><a href="guide.html?doc=mock3t1">3회 제1과제 · Container document API →</a><a href="guide.html?doc=mock3t2">3회 제2과제 · Event-driven operations →</a><a href="guide.html?doc=mock1solutions">1회 문제 해설집 · 제1·2과제 →</a><a href="guide.html?doc=mock2solutions">2회 문제 해설집 · 제1·2과제 →</a><a href="guide.html?doc=mock3solutions">3회 문제 해설집 · 풀이·실기 채점 안내 →</a></div></article>
+<section class="mock-section" aria-labelledby="mock-title">
+  <div class="mock-heading"><div><span class="badge">2027 지방대회 대비</span><h3 id="mock-title">실전 모의고사</h3><p>회차를 고르고, 문제 풀이부터 해설 확인까지 이어서 학습하세요.</p></div><span class="exam-meta">과제당 4시간 · 50점</span></div>
+  <div class="round-grid">
+    <article class="round-card">
+      <div class="round-top"><span class="round-number">01</span><span class="round-grading">자동 채점</span></div>
+      <h4>모의고사 1회</h4><p class="round-description">ECS · Aurora · 워크플로우</p>
+      <a class="exam-link" href="guide.html?doc=mock1t1"><span><small>제1과제</small>Solution architecture</span><span aria-hidden="true">↗</span></a>
+      <a class="exam-link" href="guide.html?doc=mock1t2"><span><small>제2과제</small>Small challenge</span><span aria-hidden="true">↗</span></a>
+      <a class="solution-link" href="guide.html?doc=mock1solutions">1회 문제 해설집 <span aria-hidden="true">→</span></a>
+    </article>
+    <article class="round-card">
+      <div class="round-top"><span class="round-number">02</span><span class="round-grading">자동 채점</span></div>
+      <h4>모의고사 2회</h4><p class="round-description">EKS · Terraform · 데이터 분석</p>
+      <a class="exam-link" href="guide.html?doc=mock2t1"><span><small>제1과제</small>Container platform</span><span aria-hidden="true">↗</span></a>
+      <a class="exam-link" href="guide.html?doc=mock2t2"><span><small>제2과제</small>Small challenge</span><span aria-hidden="true">↗</span></a>
+      <a class="solution-link" href="guide.html?doc=mock2solutions">2회 문제 해설집 <span aria-hidden="true">→</span></a>
+    </article>
+    <article class="round-card">
+      <div class="round-top"><span class="round-number">03</span><span class="round-grading">자동 점검 + 교사 평가</span></div>
+      <h4>모의고사 3회</h4><p class="round-description">문서 API · 이벤트 처리 · 운영</p>
+      <a class="exam-link" href="guide.html?doc=mock3t1"><span><small>제1과제</small>Container document API</span><span aria-hidden="true">↗</span></a>
+      <a class="exam-link" href="guide.html?doc=mock3t2"><span><small>제2과제</small>Event-driven operations</span><span aria-hidden="true">↗</span></a>
+      <a class="solution-link" href="guide.html?doc=mock3solutions">3회 문제 해설집 <span aria-hidden="true">→</span></a>
+    </article></div>
+  <p class="grading-note">1~2회는 자동 채점으로 제출합니다. 3회는 설정 자동 점검 30점과 교사 실기 평가 20점을 합산합니다.</p>
+</section></div><div class="section-heading course-heading"><p class="section-kicker">Learning paths</p><h2>과제별 학습 자료</h2><p>공개 문제 해설과 기초 실습 과정을 선택하세요.</p></div><div class="guide-grid course-grid">
 <article class="guide-card"><div><span class="badge">문제 번호별 선택</span><h3>제1과제 · 구축 실습</h3><p>문제 세트가 서로 다릅니다. 보유한 문제지 번호에 맞춰 선택하세요.</p></div><div class="guide-actions"><a href="guide.html?doc=task02first">02번 문제 풀이 →</a><a href="guide.html?doc=task07first">07번 문제 풀이 →</a></div></article>
 <article class="guide-card"><div><span class="badge">5개 과제 · 30점</span><h3>제2과제 · 콘솔 상세 해설서</h3><p>Workflow, 실시간 분석, MSK, CDN, Legacy. 초보자용 작업 순서와 PDF·실습 코드를 한 문서에서 확인합니다.</p></div><div class="guide-actions"><a href="day2-console-guide/">제2과제 시작하기 →</a></div></article>
 <article class="guide-card"><div><span class="badge">공개 과제 풀이</span><h3>제3과제 · System operation</h3><p>공개 과제지 기준으로 네트워크, EKS, 서비스 배포, 모니터링과 최종 검증을 진행합니다.</p></div><div class="guide-actions"><a href="day3-system-operation/">제3과제 시작하기 →</a></div></article>
