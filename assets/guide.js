@@ -98,6 +98,16 @@ const docs = {
     description: "구축 순서, 코드·정책 예시, 동작 확인과 부분점수 기준. 응시 후 확인하세요.",
     file: "mock2027/mock3-solutions.md",
   },
+  mock4t1: {
+    title: "2027 지방 모의고사 4회 · 제1과제",
+    description: "난이도 상 · 4시간 · 50점. CloudFront·Private Fargate·DynamoDB 기반 점검 API와 자동 롤백을 구현합니다.",
+    file: "mock2027/mock4-task1.md",
+  },
+  mock4t2: {
+    title: "2027 지방 모의고사 4회 · 제2과제",
+    description: "난이도 상 · 4시간 · 50점. EventBridge·Step Functions 기반 정산 자동화와 버전 재처리·실패 관측을 구현합니다.",
+    file: "mock2027/mock4-task2.md",
+  },
   consoleCli: {
     title: "AWS 콘솔 + CLI 보강 풀이",
     description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",
