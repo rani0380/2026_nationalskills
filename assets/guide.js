@@ -180,8 +180,9 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
       panel.append(actions);
       content.prepend(panel);
     }
-    if (["task02first", "task02second", "task02m1", "task02m2", "task02m3", "task02m4"].includes(docKey) || mockExams[docKey]) {
-      mountScoreSubmissionForm(docKey);
+    const submissionKey = mock4 ? "mock4t" + mock4[2] : docKey;
+    if (["task02first", "task02second", "task02m1", "task02m2", "task02m3", "task02m4"].includes(submissionKey) || mockExams[submissionKey]) {
+      mountScoreSubmissionForm(submissionKey);
     }
   })
   .catch((error) => {
@@ -189,6 +190,22 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
   });
 
 const mockExams = {
+  mock4t1: {
+    taskName: "2027모의4회_제1과제",
+    script: "mock4-1_mark.sh",
+    place: "서울 리전 CloudShell",
+    run: "bash ~/mock4-1_mark.sh <비번호>\n# 교사 평가 후 입력 예시 (영역 상한 10,9,9,14,8)\n# bash ~/mock4-1_mark.sh <비번호> 8,7,8,12,6",
+    manual: true,
+    round4Task: "1",
+  },
+  mock4t2: {
+    taskName: "2027모의4회_제2과제",
+    script: "mock4-2_mark.sh",
+    place: "서울 리전 CloudShell",
+    run: "bash ~/mock4-2_mark.sh <비번호>\n# 교사 평가 후 입력 예시 (영역 상한 12,12,9,10,7)\n# bash ~/mock4-2_mark.sh <비번호> 10,9,8,9,6",
+    manual: true,
+    round4Task: "2",
+  },
   mock3t1: {
     taskName: "2027모의3회_제1과제",
     script: "mock3-1_mark.sh",
@@ -239,6 +256,8 @@ function mountScoreSubmissionForm(activeTaskKey) {
     task02m3: "02_2과제_Module3_EventHandling",
     task02m4: "02_2과제_Module4_MSK",
     mock3t1: mockExams.mock3t1.taskName,
+    mock4t1: mockExams.mock4t1.taskName,
+    mock4t2: mockExams.mock4t2.taskName,
     mock3t2: mockExams.mock3t2.taskName,
     mock1t1: mockExams.mock1t1.taskName,
     mock1t2: mockExams.mock1t2.taskName,
@@ -307,7 +326,7 @@ bash ~/mark.sh</code></pre>
     section.querySelector(".score-submit__download").innerHTML = `
       <strong>채점 스크립트 준비</strong>
       <p><a class="score-submit__secondary" href="downloads/mock2027/${mock.script}" download="${mock.script}">${mock.script} 다운로드</a></p>
-      <p>${escapeHtml(mock.place)}에서 아래 명령을 실행하고, 출력 전체를 아래 칸에 붙여넣으세요. ${mock.manual ? "교사 실기 점수를 입력한 최종 실행에서만 TOTAL SCORE가 출력됩니다. 실기 미평가 또는 ERROR가 있는 결과는 최종 점수로 제출하지 마세요." : "마지막 줄의 TOTAL SCORE가 점수입니다."}</p>
+      <p>${escapeHtml(mock.place)}에서 아래 명령을 실행하고, 출력 전체를 아래 칸에 붙여넣으세요. ${mock.round4Task ? "교사가 영역별 점수를 확정한 뒤 TOTAL SCORE가 포함된 전체 출력을 제출하세요." : mock.manual ? "교사 실기 점수를 입력한 최종 실행에서만 TOTAL SCORE가 출력됩니다. 실기 미평가 또는 ERROR가 있는 결과는 최종 점수로 제출하지 마세요." : "마지막 줄의 TOTAL SCORE가 점수입니다."}</p>
       <pre><code>curl -fL "${url}" -o ~/${mock.script}
 ${escapeHtml(mock.run)}</code></pre>`;
   } else if (activeTaskKey !== "task02first") {
@@ -363,7 +382,15 @@ ${escapeHtml(mock.run)}</code></pre>`;
       return;
     }
     const output = form.elements.scoreOutput.value;
-    if (mock?.manual && (!/^TOTAL SCORE:\s*(?:[0-4]?\d|50)\/50\s*$/m.test(output) || /^ERROR|^INCOMPLETE/m.test(output))) {
+    if (mock?.round4Task) {
+      const validationError = validateMock4Result(output, mock.round4Task, form.elements.studentNo.value.trim());
+      if (validationError) {
+        event.preventDefault();
+        status.textContent = validationError;
+        status.classList.add("is-error");
+        return;
+      }
+    } else if (mock?.manual && (!/^TOTAL SCORE:\s*(?:[0-4]?\d|50)\/50\s*$/m.test(output) || /^ERROR|^INCOMPLETE/m.test(output))) {
       event.preventDefault();
       status.textContent = "교사 실기 평가가 포함된 최종 TOTAL SCORE와 오류 없는 결과를 제출하세요.";
       status.classList.add("is-error");
@@ -414,6 +441,21 @@ ${escapeHtml(mock.run)}</code></pre>`;
     link.click();
     URL.revokeObjectURL(url);
   });
+}
+
+function validateMock4Result(output, task, studentNo) {
+  const heading = output.match(/^2027 지방 모의고사 4회 제([12])과제 \| 비번호: (\d{1,6})[ \t]*\r?$/m);
+  if (!heading || heading[1] !== task) {
+    return "이 페이지와 같은 과제의 채점 스크립트 전체 출력을 붙여넣으세요.";
+  }
+  if (heading[2] !== studentNo) {
+    return "입력한 비번호와 채점 결과에 표시된 비번호가 일치해야 합니다.";
+  }
+  const totals = [...output.matchAll(/^TOTAL SCORE:[ \t]*(\d{1,2}(?:\.\d{1,2})?)[ \t]*\/[ \t]*50[ \t]*\r?$/gm)];
+  if (!/^교사 확정 점수[ \t]*\r?$/m.test(output) || totals.length !== 1 || Number(totals[0][1]) > 50) {
+    return "교사가 확정한 점수와 50점 만점의 최종 TOTAL SCORE가 포함된 결과를 제출하세요.";
+  }
+  return "";
 }
 
 function enhanceCodeBlocks(container) {
