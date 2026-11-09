@@ -197,18 +197,30 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
       const actions = document.createElement("div");
       actions.className = "score-submit__actions";
       actions.append(related, script);
-      if (docKey === "mock4t1") {
-        const dockerfile = document.createElement("a");
-        dockerfile.className = "score-submit__secondary";
-        dockerfile.href = "downloads/mock2027/mock4-task1/Dockerfile";
-        dockerfile.download = "Dockerfile";
-        dockerfile.textContent = "Dockerfile 다운로드";
-        actions.append(dockerfile);
+      const providedFiles = {
+        mock4t1: [["mock4-task1/Dockerfile", "Dockerfile 다운로드"]],
+        mock5t1: [
+          ["mock5-task1/sample-1.jpg", "시험용 사진 1"],
+          ["mock5-task1/sample-2.jpg", "시험용 사진 2"],
+        ],
+        mock5t2: [
+          ["mock5-task2/part-001.json", "정상 재고 JSON"],
+          ["mock5-task2/part-fail-001.json", "실패 시험용 재고 JSON"],
+          ["mock5-task2/parts-stream-test-event.json", "Lambda 테스트 이벤트 JSON"],
+        ],
+      };
+      for (const [path, label] of providedFiles[docKey] || []) {
+        const link = document.createElement("a");
+        link.className = "score-submit__secondary";
+        link.href = "downloads/mock2027/" + path;
+        link.download = path.split("/").pop();
+        link.textContent = label;
+        actions.append(link);
       }
       panel.append(actions);
       content.prepend(panel);
     }
-    const submissionKey = markingPage?.[1] === "4" ? "mock4t" + markingPage[3] : docKey;
+    const submissionKey = markingPage ? "mock" + markingPage[1] + "t" + markingPage[3] : docKey;
     if (["task02first", "task02second", "task02m1", "task02m2", "task02m3", "task02m4"].includes(submissionKey) || mockExams[submissionKey]) {
       mountScoreSubmissionForm(submissionKey);
     }
@@ -218,13 +230,29 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
   });
 
 const mockExams = {
+  mock5t1: {
+    taskName: "2027모의5회_제1과제",
+    script: "mock5-1_mark.sh",
+    place: "서울 리전 CloudShell",
+    run: "bash ~/mock5-1_mark.sh <비번호>\n# 교사 평가 후 입력 예시 (영역 상한 10,10,14,10,6)\n# bash ~/mock5-1_mark.sh <비번호> 8,9,11,8,5",
+    manual: true,
+    practicalExam: { round: "5", task: "1" },
+  },
+  mock5t2: {
+    taskName: "2027모의5회_제2과제",
+    script: "mock5-2_mark.sh",
+    place: "서울 리전 CloudShell",
+    run: "bash ~/mock5-2_mark.sh <비번호>\n# 교사 평가 후 입력 예시 (영역 상한 10,14,10,10,6)\n# bash ~/mock5-2_mark.sh <비번호> 8,12,9,8,5",
+    manual: true,
+    practicalExam: { round: "5", task: "2" },
+  },
   mock4t1: {
     taskName: "2027모의4회_제1과제",
     script: "mock4-1_mark.sh",
     place: "서울 리전 CloudShell",
     run: "bash ~/mock4-1_mark.sh <비번호>\n# 교사 평가 후 입력 예시 (영역 상한 10,9,9,14,8)\n# bash ~/mock4-1_mark.sh <비번호> 8,7,8,12,6",
     manual: true,
-    round4Task: "1",
+    practicalExam: { round: "4", task: "1" },
   },
   mock4t2: {
     taskName: "2027모의4회_제2과제",
@@ -232,7 +260,7 @@ const mockExams = {
     place: "서울 리전 CloudShell",
     run: "bash ~/mock4-2_mark.sh <비번호>\n# 교사 평가 후 입력 예시 (영역 상한 12,12,9,10,7)\n# bash ~/mock4-2_mark.sh <비번호> 10,9,8,9,6",
     manual: true,
-    round4Task: "2",
+    practicalExam: { round: "4", task: "2" },
   },
   mock3t1: {
     taskName: "2027모의3회_제1과제",
@@ -284,6 +312,8 @@ function mountScoreSubmissionForm(activeTaskKey) {
     task02m3: "02_2과제_Module3_EventHandling",
     task02m4: "02_2과제_Module4_MSK",
     mock3t1: mockExams.mock3t1.taskName,
+    mock5t1: mockExams.mock5t1.taskName,
+    mock5t2: mockExams.mock5t2.taskName,
     mock4t1: mockExams.mock4t1.taskName,
     mock4t2: mockExams.mock4t2.taskName,
     mock3t2: mockExams.mock3t2.taskName,
@@ -354,7 +384,7 @@ bash ~/mark.sh</code></pre>
     section.querySelector(".score-submit__download").innerHTML = `
       <strong>채점 스크립트 준비</strong>
       <p><a class="score-submit__secondary" href="downloads/mock2027/${mock.script}" download="${mock.script}">${mock.script} 다운로드</a></p>
-      <p>${escapeHtml(mock.place)}에서 아래 명령을 실행하고, 출력 전체를 아래 칸에 붙여넣으세요. ${mock.round4Task ? "교사가 영역별 점수를 확정한 뒤 TOTAL SCORE가 포함된 전체 출력을 제출하세요." : mock.manual ? "교사 실기 점수를 입력한 최종 실행에서만 TOTAL SCORE가 출력됩니다. 실기 미평가 또는 ERROR가 있는 결과는 최종 점수로 제출하지 마세요." : "마지막 줄의 TOTAL SCORE가 점수입니다."}</p>
+      <p>${escapeHtml(mock.place)}에서 아래 명령을 실행하고, 출력 전체를 아래 칸에 붙여넣으세요. ${mock.practicalExam ? "교사가 영역별 점수를 확정한 뒤 TOTAL SCORE가 포함된 전체 출력을 제출하세요." : mock.manual ? "교사 실기 점수를 입력한 최종 실행에서만 TOTAL SCORE가 출력됩니다. 실기 미평가 또는 ERROR가 있는 결과는 최종 점수로 제출하지 마세요." : "마지막 줄의 TOTAL SCORE가 점수입니다."}</p>
       <pre><code>curl -fL "${url}" -o ~/${mock.script}
 ${escapeHtml(mock.run)}</code></pre>`;
   } else if (activeTaskKey !== "task02first") {
@@ -410,8 +440,8 @@ ${escapeHtml(mock.run)}</code></pre>`;
       return;
     }
     const output = form.elements.scoreOutput.value;
-    if (mock?.round4Task) {
-      const validationError = validateMock4Result(output, mock.round4Task, form.elements.studentNo.value.trim());
+    if (mock?.practicalExam) {
+      const validationError = validatePracticalExamResult(output, mock.practicalExam, form.elements.studentNo.value.trim());
       if (validationError) {
         event.preventDefault();
         status.textContent = validationError;
@@ -471,12 +501,12 @@ ${escapeHtml(mock.run)}</code></pre>`;
   });
 }
 
-function validateMock4Result(output, task, studentNo) {
-  const heading = output.match(/^2027 지방 모의고사 4회 제([12])과제 \| 비번호: (\d{1,6})[ \t]*\r?$/m);
-  if (!heading || heading[1] !== task) {
+function validatePracticalExamResult(output, { round, task }, studentNo) {
+  const heading = output.match(/^2027 지방 모의고사 ([45])회 제([12])과제 \| 비번호: (\d{1,12})[ \t]*\r?$/m);
+  if (!heading || heading[1] !== round || heading[2] !== task || (round === "4" && heading[3].length > 6)) {
     return "이 페이지와 같은 과제의 채점 스크립트 전체 출력을 붙여넣으세요.";
   }
-  if (heading[2] !== studentNo) {
+  if (heading[3] !== studentNo) {
     return "입력한 비번호와 채점 결과에 표시된 비번호가 일치해야 합니다.";
   }
   const totals = [...output.matchAll(/^TOTAL SCORE:[ \t]*(\d{1,2}(?:\.\d{1,2})?)[ \t]*\/[ \t]*50[ \t]*\r?$/gm)];

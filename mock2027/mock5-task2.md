@@ -14,6 +14,16 @@
 
 구성 흐름은 **DynamoDB → Streams → Lambda → 감사 버킷**입니다. 재시도 한도를 넘긴 이벤트는 **실패 버킷**에 보관합니다.
 
+## 제공 파일
+
+| 파일 | 사용 방법 |
+| --- | --- |
+| part-001.json | DynamoDB 콘솔의 **항목 생성 → JSON 보기**에 붙여넣습니다. quantity=10으로 시작하는 정상 입력입니다. |
+| part-fail-001.json | FAIL_PART_ID를 part-fail-001로 설정한 후, DynamoDB 콘솔에서 이 JSON으로 항목을 생성합니다. |
+| parts-stream-test-event.json | Lambda 콘솔 **테스트**에 붙여넣어 INSERT·MODIFY·REMOVE 처리 코드를 점검할 때 사용합니다. |
+
+세 파일은 문제지 상단에서 다운로드합니다. Lambda 테스트 이벤트는 실제 스트림을 기다리기 전에 동작을 확인하는 연습 입력입니다. 실기 평가에는 실제 테이블 변경으로 생성된 이벤트와 실패 버킷에 보관된 원본 입력을 사용합니다.
+
 ## 2. 리소스 준비
 
 | 서비스 | 이름 | 필수 설정 |
@@ -80,3 +90,7 @@ DynamoDB Streams 부분 배치 실패: https://docs.aws.amazon.com/lambda/latest
 DynamoDB 이벤트의 실패 대상: https://docs.aws.amazon.com/lambda/latest/dg/services-dynamodb-errors.html
 
 S3 조건부 쓰기: https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html
+
+## 채점 결과 제출
+
+교사가 확정한 뒤 채점 스크립트의 최종 출력을 복사합니다. 아래 양식에 비번호와 이름, 전체 출력을 입력하고 **Google Sheets로 제출**을 누릅니다. 입력한 비번호는 출력과 같아야 합니다.

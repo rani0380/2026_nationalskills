@@ -1,0 +1,87 @@
+{
+  "Records": [
+    {
+      "eventID": "sample-parts-1",
+      "eventName": "INSERT",
+      "eventVersion": "1.1",
+      "eventSource": "aws:dynamodb",
+      "awsRegion": "ap-northeast-2",
+      "dynamodb": {
+        "Keys": {
+          "part_id": {
+            "S": "part-001"
+          }
+        },
+        "SequenceNumber": "100000000000000000001",
+        "StreamViewType": "NEW_AND_OLD_IMAGES",
+        "NewImage": {
+          "part_id": {
+            "S": "part-001"
+          },
+          "quantity": {
+            "N": "10"
+          }
+        }
+      },
+      "eventSourceARN": "arn:aws:dynamodb:ap-northeast-2:123456789012:table/parts-inventory/stream/2026-01-01T00:00:00.000"
+    },
+    {
+      "eventID": "sample-parts-2",
+      "eventName": "MODIFY",
+      "eventVersion": "1.1",
+      "eventSource": "aws:dynamodb",
+      "awsRegion": "ap-northeast-2",
+      "dynamodb": {
+        "Keys": {
+          "part_id": {
+            "S": "part-001"
+          }
+        },
+        "SequenceNumber": "100000000000000000002",
+        "StreamViewType": "NEW_AND_OLD_IMAGES",
+        "OldImage": {
+          "part_id": {
+            "S": "part-001"
+          },
+          "quantity": {
+            "N": "10"
+          }
+        },
+        "NewImage": {
+          "part_id": {
+            "S": "part-001"
+          },
+          "quantity": {
+            "N": "7"
+          }
+        }
+      },
+      "eventSourceARN": "arn:aws:dynamodb:ap-northeast-2:123456789012:table/parts-inventory/stream/2026-01-01T00:00:00.000"
+    },
+    {
+      "eventID": "sample-parts-3",
+      "eventName": "REMOVE",
+      "eventVersion": "1.1",
+      "eventSource": "aws:dynamodb",
+      "awsRegion": "ap-northeast-2",
+      "dynamodb": {
+        "Keys": {
+          "part_id": {
+            "S": "part-001"
+          }
+        },
+        "SequenceNumber": "100000000000000000003",
+        "StreamViewType": "NEW_AND_OLD_IMAGES",
+        "OldImage": {
+          "part_id": {
+            "S": "part-001"
+          },
+          "quantity": {
+            "N": "7"
+          }
+        }
+      },
+      "eventSourceARN": "arn:aws:dynamodb:ap-northeast-2:123456789012:table/parts-inventory/stream/2026-01-01T00:00:00.000"
+    }
+  ]
+}

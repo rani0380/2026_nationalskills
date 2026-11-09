@@ -16,6 +16,10 @@
 
 한 번 제출하는 동안 같은 접수 번호를 사용합니다. 접수 직후 DynamoDB에는 PENDING 기록만 있습니다. S3 업로드가 성공해도 아직 PENDING이고, 완료 API가 객체를 확인한 뒤에 READY가 됩니다. READY에 기록된 버전은 그때 제출한 사진을 가리킵니다.
 
+## 제공 파일
+
+문제지 상단에서 **시험용 사진 1**과 **시험용 사진 2**를 내려받습니다. 파일 이름은 sample-1.jpg와 sample-2.jpg입니다. AWS 콘솔에서 **CloudShell → 작업 → 파일 업로드**로 두 파일을 같은 작업 폴더에 올린 뒤, 아래 CloudShell 호출 예시에 사용하세요. 두 사진은 서로 다른 내용이므로 S3 버전 유지 시험에 사용할 수 있습니다.
+
 ## 2. 콘솔에서 준비할 리소스
 
 | 서비스 | 이름 | 필수 설정 |
@@ -198,3 +202,7 @@ S3 사전 서명 POST: https://docs.aws.amazon.com/boto3/latest/reference/servic
 HTTP API Lambda 통합 2.0: https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-lambda.html
 
 S3 객체 메타데이터 확인: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html
+
+## 채점 결과 제출
+
+교사가 확정한 뒤 채점 스크립트의 최종 출력을 복사합니다. 아래 양식에 비번호와 이름, 전체 출력을 입력하고 **Google Sheets로 제출**을 누릅니다. 입력한 비번호는 출력과 같아야 합니다.
