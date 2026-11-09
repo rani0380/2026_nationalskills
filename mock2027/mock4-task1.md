@@ -109,7 +109,23 @@ ECS에서 사용하는 IAM 역할을 두 개로 나눕니다. **실행 역할**�
 1. **CloudWatch → 로그 그룹 → 로그 그룹 생성**에서 `/inspect/api`를 만들고 보관 기간을 14일로 설정합니다.
 2. **IAM → 역할 → 역할 생성**에서 신뢰 서비스로 **Elastic Container Service Task**를 선택합니다. 실행 역할에는 `AmazonECSTaskExecutionRolePolicy`를 연결할 수 있습니다. Task 역할에는 IAM의 **인라인 정책 생성**에서 지정 테이블 ARN에 대한 DynamoDB `PutItem`과 `GetItem`만 추가합니다. 두 역할의 신뢰 주체는 `ecs-tasks.amazonaws.com`입니다.
 3. **ECR → 프라이빗 리포지토리 → 리포지토리 생성**에서 `inspect-api`와 태그 불변을 설정합니다. 스캔 설정에서 이 저장소가 기본 스캔의 push 시 검사 대상인지 확인합니다. 저장소의 **푸시 명령 보기**에서 계정에 맞는 이미지 URI를 확인할 수 있습니다.
-4. 앱 코드와 Dockerfile이 있는 폴더에서 서울 리전 기본 CloudShell로 아래 명령을 실행합니다. Dockerfile은 앱이 컨테이너 안에서 `0.0.0.0:8080`으로 실행되도록 작성합니다.
+4. **Python·Flask로 작성했다면** 문제지 상단의 **Dockerfile 다운로드**를 이용합니다. 확장자 없는 `Dockerfile`과 직접 작성한 `app.py`, `requirements.txt`를 CloudShell의 같은 폴더에 둡니다. `app.py`는 Flask 앱 객체를 `app`이라는 이름으로 노출해야 합니다. 다른 소스 파일을 import하는 구조라면 Dockerfile에 해당 파일을 복사하는 줄을 추가합니다. 다른 언어를 사용한 경우 실행 방식에 맞는 Dockerfile을 작성합니다.
+
+`requirements.txt`에는 앱에서 사용하는 라이브러리와 서버 실행에 필요한 패키지를 적습니다. Flask로 API를 만들고 boto3로 DynamoDB를 사용하는 경우 아래와 같습니다.
+
+```text
+Flask
+boto3
+gunicorn
+```
+
+CloudShell에서 Dockerfile만 직접 내려받으려면 앱 폴더에서 아래 명령을 실행합니다.
+
+```bash
+curl -fL 'https://rani0380.github.io/2026_nationalskills/downloads/mock2027/mock4-task1/Dockerfile' -o Dockerfile
+```
+
+세 파일이 준비되면 같은 폴더에서 아래 명령으로 이미지를 빌드하고 ECR에 업로드합니다. 제공 Dockerfile의 Gunicorn은 컨테이너 안에서 `0.0.0.0:8080`으로 요청을 받습니다.
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)

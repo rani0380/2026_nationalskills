@@ -177,6 +177,14 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
       const actions = document.createElement("div");
       actions.className = "score-submit__actions";
       actions.append(related, script);
+      if (docKey === "mock4t1") {
+        const dockerfile = document.createElement("a");
+        dockerfile.className = "score-submit__secondary";
+        dockerfile.href = "downloads/mock2027/mock4-task1/Dockerfile";
+        dockerfile.download = "Dockerfile";
+        dockerfile.textContent = "Dockerfile 다운로드";
+        actions.append(dockerfile);
+      }
       panel.append(actions);
       content.prepend(panel);
     }
