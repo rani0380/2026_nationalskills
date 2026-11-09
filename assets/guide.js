@@ -118,6 +118,16 @@ const docs = {
     description: "실기 평가 50점 · 확인할 증거와 읽기 전용 채점 스크립트",
     file: "mock2027/mock4-task2-marking.md",
   },
+  mock5t1: {
+    title: "2027 지방 모의고사 5회 · 제1과제",
+    description: "난이도 상 · 4시간 · 50점. 비공개 S3 업로드와 버전 확정을 처리하는 서버리스 API를 구축합니다.",
+    file: "mock2027/mock5-task1.md",
+  },
+  mock5t2: {
+    title: "2027 지방 모의고사 5회 · 제2과제",
+    description: "난이도 상 · 4시간 · 50점. DynamoDB 변경 기록을 저장하고 실패한 이벤트를 복구합니다.",
+    file: "mock2027/mock5-task2.md",
+  },
   consoleCli: {
     title: "AWS 콘솔 + CLI 보강 풀이",
     description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",

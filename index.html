@@ -38,6 +38,11 @@
 .exam-link:hover { color:var(--blue); }
 .solution-link { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; padding:11px 14px; border-radius:7px; background:#edf5f2; color:#08735d; font-size:13px; font-weight:800; }
 .solution-link:hover { background:#dceee6; }
+.round-grid .latest-round { grid-column: 1 / -1; }
+.latest-round-links { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 22px; }
+@media(max-width:720px) {
+  .latest-round-links { grid-template-columns:1fr; }
+}
 .grading-note { margin:20px 0 0; color:#5e746a; font-size:12px; }
 .home-page .course-heading { margin-top:44px; margin-bottom:22px; }
 .home-page .course-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start; }
@@ -108,6 +113,14 @@
 <section class="mock-section" aria-labelledby="mock-title">
   <div class="mock-heading"><div><span class="badge">2027 지방대회 대비</span><h3 id="mock-title">실전 모의고사</h3><p>회차를 고르고, 문제 풀이부터 해설 확인까지 이어서 학습하세요.</p></div><span class="exam-meta">과제당 4시간 · 50점</span></div>
   <div class="round-grid">
+    <article class="round-card latest-round">
+      <div class="round-top"><span class="round-number">05</span><span class="round-grading">신규 · 난이도 상 · 교사 실기 평가</span></div>
+      <h4>모의고사 5회</h4><p class="round-description">보안 업로드 API · 변경 이력 저장과 장애 복구</p>
+      <div class="latest-round-links">
+        <a class="exam-link" href="guide.html?doc=mock5t1"><span><small>제1과제</small>Secure evidence upload API</span><span aria-hidden="true">↗</span></a>
+        <a class="exam-link" href="guide.html?doc=mock5t2"><span><small>제2과제</small>Stream audit archive and replay</span><span aria-hidden="true">↗</span></a>
+      </div>
+    </article>
     <article class="round-card">
       <div class="round-top"><span class="round-number">01</span><span class="round-grading">자동 채점</span></div>
       <h4>모의고사 1회</h4><p class="round-description">ECS · Aurora · 워크플로우</p>
@@ -137,7 +150,7 @@
       <a class="solution-link" href="guide.html?doc=mock4mark1">제1과제 채점지·스크립트 <span aria-hidden="true">→</span></a>
       <a class="solution-link" href="guide.html?doc=mock4mark2">제2과제 채점지·스크립트 <span aria-hidden="true">→</span></a>
     </article></div>
-  <p class="grading-note">1~2회는 자동 채점으로 제출합니다. 3회는 설정 자동 점검 30점과 교사 실기 평가 20점을 합산합니다. 4회는 과제별 실기 평가표로 채점합니다.</p>
+  <p class="grading-note">1~2회는 자동 채점으로 제출합니다. 3회는 설정 자동 점검 30점과 교사 실기 평가 20점을 합산합니다. 4~5회는 과제별 실기 평가표로 채점합니다.</p>
 </section></div><div class="section-heading course-heading"><p class="section-kicker">Learning paths</p><h2>과제별 학습 자료</h2><p>공개 문제 해설과 기초 실습 과정을 선택하세요.</p></div><div class="guide-grid course-grid">
 <article class="guide-card"><div><span class="badge">문제 번호별 선택</span><h3>제1과제 · 구축 실습</h3><p>문제 세트가 서로 다릅니다. 보유한 문제지 번호에 맞춰 선택하세요.</p></div><div class="guide-actions"><a href="guide.html?doc=task02first">02번 문제 풀이 →</a><a href="guide.html?doc=task07first">07번 문제 풀이 →</a></div></article>
 <article class="guide-card"><div><span class="badge">5개 과제 · 30점</span><h3>제2과제 · 콘솔 상세 해설서</h3><p>Workflow, 실시간 분석, MSK, CDN, Legacy. 초보자용 작업 순서와 PDF·실습 코드를 한 문서에서 확인합니다.</p></div><div class="guide-actions"><a href="day2-console-guide/">제2과제 시작하기 →</a></div></article>
