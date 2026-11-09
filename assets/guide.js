@@ -108,6 +108,16 @@ const docs = {
     description: "난이도 상 · 4시간 · 50점. EventBridge·Step Functions 기반 정산 자동화와 버전 재처리·실패 관측을 구현합니다.",
     file: "mock2027/mock4-task2.md",
   },
+  mock4mark1: {
+    title: "2027 지방 모의고사 4회 · 제1과제 채점지",
+    description: "실기 평가 50점 · 확인할 증거와 읽기 전용 채점 스크립트",
+    file: "mock2027/mock4-task1-marking.md",
+  },
+  mock4mark2: {
+    title: "2027 지방 모의고사 4회 · 제2과제 채점지",
+    description: "실기 평가 50점 · 확인할 증거와 읽기 전용 채점 스크립트",
+    file: "mock2027/mock4-task2-marking.md",
+  },
   consoleCli: {
     title: "AWS 콘솔 + CLI 보강 풀이",
     description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",
@@ -149,6 +159,27 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
     const content = document.getElementById("content");
     content.innerHTML = renderMarkdown(markdown);
     enhanceCodeBlocks(content);
+    const mock4 = docKey.match(/^mock4(t|mark)([12])$/);
+    if (mock4) {
+      const [, kind, task] = mock4;
+      const panel = document.createElement("nav");
+      panel.className = "score-submit__download";
+      panel.setAttribute("aria-label", "4회 과제 채점 자료");
+      const related = document.createElement("a");
+      related.className = "score-submit__secondary";
+      related.href = "guide.html?doc=mock4" + (kind === "t" ? "mark" : "t") + task;
+      related.textContent = kind === "t" ? "채점지 열기" : "문제지 열기";
+      const script = document.createElement("a");
+      script.className = "score-submit__secondary";
+      script.download = "mock4-" + task + "_mark.sh";
+      script.href = "downloads/mock2027/" + script.download;
+      script.textContent = "채점 스크립트 다운로드";
+      const actions = document.createElement("div");
+      actions.className = "score-submit__actions";
+      actions.append(related, script);
+      panel.append(actions);
+      content.prepend(panel);
+    }
     if (["task02first", "task02second", "task02m1", "task02m2", "task02m3", "task02m4"].includes(docKey) || mockExams[docKey]) {
       mountScoreSubmissionForm(docKey);
     }
