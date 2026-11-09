@@ -22,6 +22,9 @@
 
 아래 순서로 요구사항을 확인하세요. 리소스 이름과 숫자는 표에 나온 값을 사용합니다.
 
+**콘솔에서 시작하기**  
+AWS 콘솔 오른쪽 위에서 **아시아 태평양(서울)**을 선택합니다. 콘솔 검색창에서 VPC, DynamoDB, IAM, ECR, ECS, EC2, CloudFront, CloudWatch를 검색해 각 서비스를 엽니다. CloudFront는 전역 서비스입니다. 앱 코드는 직접 작성하고, 이미지 빌드와 API 호출 시험은 콘솔에서 열 수 있는 CloudShell을 사용합니다.
+
 ## 2. 네트워크 만들기
 
 VPC는 실습에 사용할 네트워크입니다. 서울의 A·C 가용 영역에 서브넷을 두 개씩 만듭니다.
@@ -45,6 +48,14 @@ Private 서브넷에서 AWS 서비스로 연결하려면 VPC Endpoint를 사용�
 | Gateway 2개 | S3, DynamoDB | 두 Private 서브넷의 라우팅 테이블에 연결 |
 
 ECR은 컨테이너 이미지를 가져올 때, S3는 ECR 이미지 레이어를 내려받을 때, CloudWatch Logs는 로그를 보낼 때 사용합니다.
+
+### 콘솔에서 어디를 누르나요?
+
+1. **VPC → VPC → VPC 생성**에서 **VPC만**을 선택합니다. 이름과 CIDR을 입력한 뒤, VPC를 선택해 **작업 → VPC 설정 편집**에서 DNS 확인과 DNS 호스트 이름을 활성화합니다.
+2. **VPC → 서브넷 → 서브넷 생성**에서 위 표의 네 서브넷을 추가합니다. Private 두 곳은 **서브넷 설정 편집**에서 공인 IPv4 자동 할당을 끕니다.
+3. **인터넷 게이트웨이**에서 IGW를 만들고 `inspect-vpc`에 연결합니다. **라우팅 테이블**에서 Public용 테이블에 `0.0.0.0/0 → IGW`를 추가하고, **서브넷 연결**에서 Public 두 곳을 연결합니다. Private 두 곳에도 별도의 Private용 테이블을 명시적으로 연결합니다. 이 테이블에는 인터넷 기본 경로를 추가하지 않습니다.
+4. **보안 그룹**에서 ALB용, Task용, Endpoint용 그룹을 같은 VPC에 만듭니다. ALB용 80의 소스는 CloudFront 관리형 prefix list(`com.amazonaws.global.cloudfront.origin-facing`), Task용 8080의 소스는 ALB용 그룹, Endpoint용 443의 소스는 Task용 그룹을 선택합니다.
+5. **VPC → 엔드포인트 → 엔드포인트 생성**에서 AWS 서비스를 선택합니다. Interface 세 개는 A·C Private 서브넷과 Endpoint용 그룹을 선택하고 **DNS 이름 활성화**를 확인합니다. Gateway 두 개는 Private 두 서브넷에 연결된 라우팅 테이블을 선택합니다. 생성 뒤 Endpoint 상태와 라우팅 테이블 연결을 확인합니다.
 
 ## 3. 점검 결과 저장 기능 만들기
 
@@ -76,6 +87,10 @@ POST 요청 예시입니다. 헤더에는 `Idempotency-Key: exam-01`을 넣습�
 
 DynamoDB에서 **해당 접수 번호가 없을 때만 저장**하는 조건부 쓰기를 사용합니다. 이미 저장되어 조건부 쓰기가 실패하면 일관된 읽기로 기존 내용을 확인합니다. 같은 내용이면 기존 값을 반환하고, 다른 내용이면 충돌로 응답합니다. 요청이 동시에 들어와도 최초 생성에 성공한 한 건만 201을 반환해야 합니다.
 
+### DynamoDB 콘솔에서 테이블 준비하기
+
+**DynamoDB → 테이블 → 테이블 생성**에서 `inspect-records`와 파티션 키 `record_id`(문자열)를 입력합니다. 생성 화면의 용량 모드에서 On-demand를 선택하거나 생성 뒤 테이블의 용량 설정에서 확인합니다. **백업 → 지정 시간 복구(PITR) 편집**에서 복구를 활성화합니다. 앱에서는 위 API 조건에 맞춰 이 테이블을 사용합니다.
+
 ## 4. 컨테이너 배포하기
 
 | 항목 | 필수 설정 |
@@ -88,6 +103,26 @@ DynamoDB에서 **해당 접수 번호가 없을 때만 저장**하는 조건부 
 | 로그 | awslogs 드라이버, /inspect/api 로그 그룹, 보관 14일 |
 
 ECS에서 사용하는 IAM 역할을 두 개로 나눕니다. **실행 역할**은 ECS가 ECR에서 이미지를 가져오고 로그를 보낼 때 사용합니다. **Task 역할**은 앱이 `inspect-records` 테이블에 `PutItem`과 `GetItem`을 할 때 사용합니다. Task 역할의 데이터 권한은 이 테이블과 두 작업으로 제한합니다. 이미지나 환경 변수에 정적 AWS 키를 넣지 않습니다.
+
+### 콘솔에서 이미지와 Task Definition 준비하기
+
+1. **CloudWatch → 로그 그룹 → 로그 그룹 생성**에서 `/inspect/api`를 만들고 보관 기간을 14일로 설정합니다.
+2. **IAM → 역할 → 역할 생성**에서 신뢰 서비스로 **Elastic Container Service Task**를 선택합니다. 실행 역할에는 `AmazonECSTaskExecutionRolePolicy`를 연결할 수 있습니다. Task 역할에는 IAM의 **인라인 정책 생성**에서 지정 테이블 ARN에 대한 DynamoDB `PutItem`과 `GetItem`만 추가합니다. 두 역할의 신뢰 주체는 `ecs-tasks.amazonaws.com`입니다.
+3. **ECR → 프라이빗 리포지토리 → 리포지토리 생성**에서 `inspect-api`와 태그 불변을 설정합니다. 스캔 설정에서 이 저장소가 기본 스캔의 push 시 검사 대상인지 확인합니다. 저장소의 **푸시 명령 보기**에서 계정에 맞는 이미지 URI를 확인할 수 있습니다.
+4. 앱 코드와 Dockerfile이 있는 폴더에서 서울 리전 기본 CloudShell로 아래 명령을 실행합니다. Dockerfile은 앱이 컨테이너 안에서 `0.0.0.0:8080`으로 실행되도록 작성합니다.
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGISTRY="$ACCOUNT_ID.dkr.ecr.ap-northeast-2.amazonaws.com"
+IMAGE="$REGISTRY/inspect-api:v1"
+aws ecr get-login-password --region ap-northeast-2 |
+  docker login --username AWS --password-stdin "$REGISTRY"
+docker build --platform linux/amd64 -t "$IMAGE" .
+docker push "$IMAGE"
+printf '%s\n' "$IMAGE"
+```
+
+5. **ECS → 클러스터 → 클러스터 생성**에서 `inspect-cluster`를 만듭니다. **ECS → 태스크 정의 → 새 태스크 정의 생성**에서 표의 Fargate 사양과 두 역할을 입력합니다. 컨테이너 이름은 `api`, 이미지 URI는 위 명령에서 출력한 값, 컨테이너 포트는 8080입니다. 환경 변수에 `TABLE_NAME=inspect-records`를 넣고 로그 드라이버는 `awslogs`, 리전은 서울, 로그 그룹은 앞서 생성한 그룹, 스트림 접두사는 예를 들어 `ecs`로 설정합니다.
 
 ## 5. 사용자가 접속할 경로 만들기
 
@@ -109,12 +144,26 @@ ECS에서 사용하는 IAM 역할을 두 개로 나눕니다. **실행 역할**�
 
 배포가 끝나면 두 가용 영역에서 각각 하나씩, **healthy 타깃 2개**가 있는지 확인합니다. API 요청은 CloudFront 주소로 시험합니다.
 
+### 콘솔에서 ALB·ECS·CloudFront를 연결하기
+
+1. **EC2 → 대상 그룹 → 대상 그룹 생성**에서 대상 유형 **IP 주소**, VPC `inspect-vpc`, HTTP 8080, 상태 검사 경로 `/health`, 성공 코드 `200`을 지정합니다. 컨테이너 IP는 ECS 서비스가 등록합니다.
+2. **EC2 → 로드 밸런서 → 로드 밸런서 생성 → Application Load Balancer**에서 Public 두 곳과 ALB용 보안 그룹을 지정합니다. **리스너 및 규칙 → HTTP:80**에서 기본 동작을 고정 403으로 편집하고, 별도 규칙에 **HTTP 헤더 조건 → X-Inspect-Origin**을 추가해 지정 값이 맞으면 `inspect-api-tg`로 전달합니다. ECS 서비스가 대상 그룹을 사용하려면 먼저 이 리스너 규칙으로 대상 그룹을 ALB와 연결해야 합니다.
+3. **ECS → 클러스터 → inspect-cluster → 서비스 → 생성**에서 앞서 만든 태스크 정의와 Fargate, Desired 2를 선택합니다. **네트워킹**에서 Private 두 곳과 Task용 그룹을 선택하고 Public IP를 끕니다. **로드 밸런싱**에서 기존 ALB·HTTP:80·대상 그룹과 컨테이너 `api:8080`을 연결합니다. **배포 실패 감지**에서 ECS deployment circuit breaker와 Rollback on failures를 활성화합니다. 생성 후 ALB 기본 동작과 헤더 조건이 그대로 적용되는지 다시 확인합니다.
+4. **CloudFront → 정책 → 원본 요청 → 정책 생성**에서 Origin에 보낼 헤더로 `Idempotency-Key`와 `Content-Type`을 포함합니다. **배포 → 배포 생성**에서 ALB의 DNS 이름을 사용자 지정 Origin으로 선택하고 Origin 프로토콜은 HTTP로 설정합니다. **사용자 지정 헤더 추가**에서 ALB 규칙의 이름과 값으로 설정합니다.
+5. 배포의 **동작(Behaviors)**에서 Viewer protocol은 Redirect HTTP to HTTPS, 허용 메서드는 7개 모두, 캐시 정책은 `CachingDisabled`, 원본 요청 정책은 앞서 만든 정책을 선택합니다. 배포 완료 뒤 표시되는 CloudFront 도메인을 API 주소로 사용합니다.
+
 ## 6. 로그·경보·자동 복구 확인하기
 
 - 앱 로그에 요청 경로, 상태 코드, 오류 원인을 남깁니다. Origin 검증 값과 AWS 자격 증명은 기록하지 않습니다.
 - `inspect-unhealthy` 경보를 만듭니다. ALB와 대상 그룹을 식별하는 dimension을 사용하고, 지표는 ALB의 `UnHealthyHostCount`입니다. 통계는 Maximum, 기간은 60초입니다. 연속 두 번 1 이상일 때 경보로 전환하고, 결측치는 `notBreaching`으로 처리합니다.
 - 자동 복구 시험은 정상 배포가 안정된 뒤 합니다. 정상 이미지와 역할을 유지한 새 Task Definition revision을 만들고, 컨테이너가 시작 직후 종료하도록 command만 바꿉니다. 이 revision을 **시험 서비스에만** 적용합니다.
 - ECS가 실패를 감지한 이벤트, 직전 정상 revision으로 복귀한 상태, 복귀 뒤 CloudFront API의 정상 응답을 확인합니다. 수동으로 되돌린 경우에는 자동 복구 점수를 받을 수 없습니다.
+
+### 콘솔에서 경보와 복구를 확인하기
+
+- **CloudWatch → 경보 → 경보 생성 → 지표 선택 → ApplicationELB**에서 ALB와 대상 그룹이 모두 일치하는 `UnHealthyHostCount`를 고릅니다. 위의 통계·기간을 입력하고 **추가 구성**에서 2회 중 2회 및 결측치 처리 값을 확인합니다.
+- **ECS → 태스크 정의 → inspect-api → 새 리비전 생성**에서 정상 리비전을 복사한 뒤 컨테이너 명령만 바꿉니다. 현재 시작 명령 구조에서 즉시 종료되는지 확인합니다. **ECS → 서비스 → 업데이트**에서 시험용 리비전을 선택합니다. **배포**와 **이벤트**에서 실패, 롤백, 정상 리비전을 확인하고 API를 다시 호출합니다.
+- 타깃이 비정상이면 **EC2 → 대상 그룹 → 대상**의 상태 이유와 **ECS → 서비스 → 이벤트**를 함께 봅니다. 이미지 가져오기에 실패하면 ECR·S3 Endpoint와 실행 역할을, 상태 검사에 실패하면 포트·Task 보안 그룹·앱의 `/health`를 확인합니다.
 
 ## 7. 시험하기와 제출하기
 
@@ -140,3 +189,7 @@ ECS에서 사용하는 IAM 역할을 두 개로 나눕니다. **실행 역할**�
 ## 참고 자료
 
 AWS CloudFront의 ALB 접근 제한: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/restrict-access-to-load-balancer.html
+
+AWS CloudShell에서 이미지 빌드 및 ECR 푸시: https://docs.aws.amazon.com/cloudshell/latest/userguide/tutorial-docker-cli.html
+
+ECS 콘솔에서 서비스와 롤백 설정: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-service-console-v2.html
