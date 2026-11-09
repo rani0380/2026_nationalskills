@@ -128,6 +128,16 @@ const docs = {
     description: "난이도 상 · 4시간 · 50점. DynamoDB 변경 기록을 저장하고 실패한 이벤트를 복구합니다.",
     file: "mock2027/mock5-task2.md",
   },
+  mock5mark1: {
+    title: "2027 지방 모의고사 5회 · 제1과제 채점기준표",
+    description: "실기 평가 50점 · 세부 배점, 증거, 읽기 전용 채점 스크립트",
+    file: "mock2027/mock5-task1-marking.md",
+  },
+  mock5mark2: {
+    title: "2027 지방 모의고사 5회 · 제2과제 채점기준표",
+    description: "실기 평가 50점 · 세부 배점, 증거, 읽기 전용 채점 스크립트",
+    file: "mock2027/mock5-task2-marking.md",
+  },
   consoleCli: {
     title: "AWS 콘솔 + CLI 보강 풀이",
     description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",
@@ -169,19 +179,19 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
     const content = document.getElementById("content");
     content.innerHTML = renderMarkdown(markdown);
     enhanceCodeBlocks(content);
-    const mock4 = docKey.match(/^mock4(t|mark)([12])$/);
-    if (mock4) {
-      const [, kind, task] = mock4;
+    const markingPage = docKey.match(/^mock([45])(t|mark)([12])$/);
+    if (markingPage) {
+      const [, round, kind, task] = markingPage;
       const panel = document.createElement("nav");
       panel.className = "score-submit__download";
-      panel.setAttribute("aria-label", "4회 과제 채점 자료");
+      panel.setAttribute("aria-label", round + "회 과제 채점 자료");
       const related = document.createElement("a");
       related.className = "score-submit__secondary";
-      related.href = "guide.html?doc=mock4" + (kind === "t" ? "mark" : "t") + task;
+      related.href = "guide.html?doc=mock" + round + (kind === "t" ? "mark" : "t") + task;
       related.textContent = kind === "t" ? "채점지 열기" : "문제지 열기";
       const script = document.createElement("a");
       script.className = "score-submit__secondary";
-      script.download = "mock4-" + task + "_mark.sh";
+      script.download = "mock" + round + "-" + task + "_mark.sh";
       script.href = "downloads/mock2027/" + script.download;
       script.textContent = "채점 스크립트 다운로드";
       const actions = document.createElement("div");
@@ -198,7 +208,7 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
       panel.append(actions);
       content.prepend(panel);
     }
-    const submissionKey = mock4 ? "mock4t" + mock4[2] : docKey;
+    const submissionKey = markingPage?.[1] === "4" ? "mock4t" + markingPage[3] : docKey;
     if (["task02first", "task02second", "task02m1", "task02m2", "task02m3", "task02m4"].includes(submissionKey) || mockExams[submissionKey]) {
       mountScoreSubmissionForm(submissionKey);
     }
