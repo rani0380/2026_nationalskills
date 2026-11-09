@@ -325,18 +325,28 @@ h1 {
   position: sticky;
   top: 18px;
   align-self: start;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
 .doc-sidebar a {
+  flex: none;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--white);
   color: var(--muted);
   font-weight: 800;
+}
+
+.doc-sidebar:focus-visible,
+.doc-sidebar a:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: -3px;
 }
 
 .doc-sidebar a:hover,
@@ -591,6 +601,9 @@ h1 {
 
   .doc-sidebar {
     position: static;
+    max-height: none;
+    overflow: visible;
+    scrollbar-gutter: auto;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
