@@ -148,6 +148,11 @@ const docs = {
     description: "난이도 상 · 4시간 · 50점. S3 버전을 SSM으로 배포하고 검증 실패 보존과 이전 버전 복구를 수행합니다.",
     file: "mock2027/mock6-task2.md",
   },
+  mock6solutions: {
+    title: "2027 지방 모의고사 6회 · 구현·검증 해설",
+    description: "Private 통신·중복 처리·버전 배포·실패 보존·롤백·검증 명령을 정리한 보충 해설입니다.",
+    file: "mock2027/mock6-solutions.md",
+  },
   consoleCli: {
     title: "AWS 콘솔 + CLI 보강 풀이",
     description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",
@@ -178,7 +183,7 @@ for (const link of document.querySelectorAll("[data-doc-link]")) {
   }
 }
 
-fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
+fetch(encodeURI(selected.file + "?v=20261124-mock6-expanded"), { cache: "no-store" })
   .then((response) => {
     if (!response.ok) {
       throw new Error(`문서를 불러오지 못했습니다. (${response.status})`);

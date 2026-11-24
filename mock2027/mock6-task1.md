@@ -8,6 +8,8 @@
 | 채점 | 교사 실기 평가 50점 |
 | 출제 구분 | 자체 제작 연습문제. 제2과제와 독립적으로 응시 |
 
+보충 개정: 2026. 11. 24. · 기존 4시간·50점과 리소스 이름을 유지하고 구현·검증 기준을 명확히 했습니다. 별도 보충 해설은 왼쪽 메뉴의 ‘6회 · 구현·검증 해설’에서 확인합니다.
+
 ## 1. 무엇을 만드나요?
 
 여러 점검 결과를 큐로 받아 통계 보고서를 만드는 시스템입니다. 사용자는 S3에 원본 CSV를 올리고 SQS에 작업 메시지를 넣습니다. ECS 컨테이너가 메시지를 읽고 보고서를 만들며, 잘못된 메시지는 재시도 후 실패 큐로 이동합니다.
@@ -106,3 +108,90 @@ Python 또는 자유 언어로 작업자를 작성합니다. Lambda 대신 ECS �
 S3 조건부 쓰기: https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html
 
 SQS visibility timeout: https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html
+
+## 7. 보충: 시작 전 변수와 네트워크 점검
+
+| 변수 | 예시·확인 방법 |
+| --- | --- |
+| 계정ID | CloudShell에서 aws sts get-caller-identity의 Account 값 |
+| 비번호 | 1~6자리 숫자. 버킷 이름에 쓴 값을 끝까지 유지 |
+| 원본 버전 | 업로드 응답의 VersionId. 문자열 null 또는 빈 값은 사용하지 않음 |
+| QUEUE_URL | 원본 큐 report-jobs의 URL. DLQ URL과 혼동하지 않음 |
+| BUCKET_NAME | report-data-계정ID-비번호 |
+| TABLE_NAME | report-jobs |
+
+VPC의 DNS resolution과 DNS hostnames를 모두 켭니다. 두 Private 라우팅 테이블에는 VPC local 경로와 S3·DynamoDB prefix-list 경로가 있어야 하며, IPv4 0.0.0.0/0 및 IPv6 ::/0 인터넷 경로가 없어야 합니다. Interface Endpoint는 각 서비스별 하나를 만들고 그 안에 두 AZ의 서브넷을 선택합니다.
+
+| Endpoint 서비스 이름 | 유형 | 용도 |
+| --- | --- | --- |
+| com.amazonaws.ap-northeast-2.ecr.api | Interface | ECR 인증·이미지 메타데이터 |
+| com.amazonaws.ap-northeast-2.ecr.dkr | Interface | 이미지 pull |
+| com.amazonaws.ap-northeast-2.logs | Interface | awslogs 전송 |
+| com.amazonaws.ap-northeast-2.sqs | Interface | 작업 long polling·삭제 |
+| com.amazonaws.ap-northeast-2.s3 | Gateway | 원본·보고서·ECR 이미지 레이어 읽기 |
+| com.amazonaws.ap-northeast-2.dynamodb | Gateway | 작업 기록 |
+
+작업자 SG의 outbound는 Endpoint SG TCP 443, S3 및 DynamoDB의 관리형 prefix list TCP 443을 허용합니다. Endpoint SG의 inbound는 작업자 SG TCP 443만 허용합니다. SG와 네트워크 ACL의 차이를 구분하고, 사용자 정의 ACL을 쓴다면 응답 포트도 허용합니다.
+
+S3 Gateway Endpoint 정책을 실습 버킷으로만 제한하면 ECR 이미지 레이어를 받을 수 없습니다. 실습 버킷과 함께 서울 ECR 레이어 저장소 prod-ap-northeast-2-starport-layer-bucket의 GetObject 경로를 허용하거나, Endpoint 정책 기본값으로 먼저 동작을 확인합니다. 실제 데이터 접근 범위는 IAM과 버킷 정책으로 제한합니다.
+
+컨테이너 실행 시 pip 설치·운영체제 패키지 다운로드를 하지 않습니다. 인터넷이 있는 빌드 환경에서 의존성을 이미지에 포함하고 ECR로 push한 뒤 Task를 시작합니다. ECR은 직접 push한 일반 저장소를 사용하며 pull-through cache의 첫 외부 다운로드에 의존하지 않습니다.
+
+## 8. 보충: 메시지·CSV·중복 처리 판정
+
+- SQS body는 JSON 객체여야 합니다. 필수 필드 세 개는 문자열이며 job_id는 정규식 ^[A-Za-z0-9-]{1,40}$를 만족해야 합니다.
+- source_key는 inputs/로 시작하고 .csv로 끝나야 합니다. source_version은 빈 값·null을 거부합니다. 메시지의 버킷·출력 키 필드를 실행 대상으로 사용하지 않습니다.
+- CSV 헤더는 순서까지 device,result와 일치해야 합니다. 데이터는 1~100행입니다. 초과 열·누락 열·빈 행·빈 device·PASS/FAIL 이외 값은 실패입니다. device의 앞뒤 공백은 제거할 수 있으나 result는 대소문자를 바꾸어 인정하지 않습니다.
+- HeadObject에 VersionId를 지정해 ContentLength가 65536 이하인지 먼저 확인합니다. GetObject에도 같은 VersionId를 지정하고 최대 65537바이트만 읽어 제한 초과를 다시 확인합니다. UTF-8 디코딩 오류는 실패입니다.
+- 입력 파일의 추가 업로드로 latest가 바뀌더라도 이미 보낸 메시지는 지정된 과거 버전을 읽어야 합니다.
+
+중복 처리의 기준 데이터는 S3 보고서입니다. 작업을 받으면 reports/job_id.json을 조회하고, 존재하면 원본 키·버전을 대조합니다. 보고서가 없다면 지정 버전의 CSV를 검증·집계한 뒤 조건부 저장합니다.
+
+| 상황 | 처리 | 메시지 삭제 |
+| --- | --- | --- |
+| 보고서 없음, 조건부 저장 성공 | 새 보고서를 기준으로 DB DONE 기록 | DB 성공 후 |
+| 조건부 저장 412 PreconditionFailed | 다른 Task가 만든 기존 보고서를 읽고 원본 대조 | 같은 원본이며 DB 성공 후 |
+| 조건부 저장 409 ConditionalRequestConflict | 짧은 backoff 후 조건부 저장·기존 객체 확인을 제한 횟수만 재시도 | 성공 확정 전에는 삭제 안 함 |
+| 보고서는 있으나 DB 기록 누락 | 기존 보고서 값으로 DB 재기록 | DB 성공 후 |
+| 같은 job_id, 다른 원본 버전 | JOB_CONFLICT 로그. 기존 보고서·DB를 변경하지 않음 | 삭제 안 함 |
+| 접근 거부·네트워크·파싱 오류 | 오류 종류를 기록하고 재시도에 맡김 | 삭제 안 함 |
+
+403 AccessDenied를 ‘객체 없음’으로 바꿔 처리하지 않습니다. ListBucket을 부여한다면 s3:prefix를 inputs/*와 reports/*로 제한하여, 해당 prefix의 없는 객체와 권한 오류를 구분할 수 있게 합니다. 충돌을 확인하려고 보고서를 삭제하거나 새 버전을 덮어쓰면 중복 방지 점수를 인정하지 않습니다.
+
+DynamoDB 기록은 보고서에 저장된 값으로만 만듭니다. DB가 일시 실패했을 때 보고서를 삭제해 보상하려 하지 않습니다. 원본 메시지는 최대 30초 내 처리하고 ReceiveMessage의 WaitTimeSeconds=20, MaxNumberOfMessages=1을 사용합니다. poll 대기는 처리 시간에 포함하지 않습니다.
+
+## 9. 보충: 재현 가능한 시험과 기대 결과
+
+시험 중 ECS 서비스 두 Task가 RUNNING인 것을 먼저 확인합니다. DLQ에 들어간 메시지는 경보와 증거 수집을 마친 뒤 정리합니다.
+
+| 시험 | 준비·동작 | 합격 결과 |
+| --- | --- | --- |
+| 정상 처리 | input.csv의 실제 VersionId로 exam-001 전송 | 보고서 total=4/pass=3/fail=1, DB DONE |
+| 원본 버전 고정 | 같은 키에 invalid.csv를 새 버전으로 업로드한 뒤, 새 job_id와 최초 정상 VersionId 전송 | 정상 4/3/1. latest를 읽지 않음 |
+| 동시 중복 | exam-001 정상 메시지 두 개를 연속 전송 | 동일 보고서·DB 유지. 해당 보고서의 실제 객체 버전 1개 |
+| DB 실패 후 복구 | 교사가 전용 Task Role의 테이블 PutItem만 일시 거부하고 새 job_id 실행. 보고서 생성 후 거부 해제 | DB 복구 후 DONE 및 큐 삭제. 보고서 버전은 1개 |
+| 없는 버전 | 존재하지 않는 source_version을 새 job_id로 전송 | 성공 보고서·DONE 없음. DLQ 이동 |
+| CSV 오류 | invalid.csv의 실제 VersionId를 새 job_id로 전송 | 검증 실패·DLQ 이동 |
+| job_id 충돌 | 성공한 exam-001에 다른 원본 버전 지정 | 기존 보고서·DB 유지, 충돌 메시지 DLQ 이동 |
+| Task 복구 | 교사가 report-worker Task 한 개 중지 | 서비스가 새 Task를 만들어 RUNNING 2 복구 |
+
+DB 장애 시험은 교사가 실습 전용 역할에만 짧게 수행합니다. 원래 정책을 별도 저장하고 시험 직후 복원합니다. IAM 반영 지연과 visibility 180초를 고려해 최대 15분 관찰하며, 다른 서비스·테이블 권한은 변경하지 않습니다.
+
+## 10. 보충: 채점 증거와 시간 배분
+
+| 권장 시간 | 작업 |
+| --- | --- |
+| 0~50분 | VPC·Endpoint·S3·DynamoDB·SQS |
+| 50~140분 | 작업자 구현·이미지 빌드·권한·ECS |
+| 140~205분 | 정상·중복·충돌·DB 복구 시험 |
+| 205~240분 | DLQ·경보·Task 복구·증거 정리 |
+
+기존 50점 배점을 그대로 적용합니다. ‘작업 처리 16점’은 원본 버전·검증·집계 5점, 조건부 쓰기·동시 중복·충돌 보존 6점, DB 성공 후 삭제·실패 복구 5점으로 평가합니다. 설정 화면만으로 동작 점수를 대체하지 않습니다.
+
+제출 폴더에는 worker 소스·Dockerfile·의존성 버전, 계정·비번호와 원본 VersionId 목록, 정상/중복/실패 요청, 보고서 JSON·버전 목록, DB 조회, DLQ 메시지·경보 이력, Task 교체 전후를 넣습니다. 정적 키·세션 토큰·로그인 비밀번호는 제출하지 않습니다.
+
+## 보충 참고
+
+ECR PrivateLink와 S3 레이어 경로: https://docs.aws.amazon.com/AmazonECR/latest/userguide/vpc-endpoints.html
+
+ECS Private 연결: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/networking-connecting-vpc.html
