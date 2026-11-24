@@ -93,8 +93,9 @@ python3 -m unittest -v test_worker
 # 인터넷이 있는 Docker 빌드 환경에서 실행합니다.
 # REPOSITORY_URI는 콘솔의 본인 report-worker ECR URI로 교체합니다.
 REPOSITORY_URI="본인계정.dkr.ecr.ap-northeast-2.amazonaws.com/report-worker"
+REGISTRY=$(printf '%s' "$REPOSITORY_URI" | cut -d/ -f1)
 aws ecr get-login-password --region ap-northeast-2 | \
-  docker login --username AWS --password-stdin "$REPOSITORY_URI"
+  docker login --username AWS --password-stdin "$REGISTRY"
 docker build --platform linux/amd64 -t report-worker:v1 .
 docker tag report-worker:v1 "$REPOSITORY_URI:v1"
 docker push "$REPOSITORY_URI:v1"
