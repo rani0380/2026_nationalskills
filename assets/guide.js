@@ -138,6 +138,16 @@ const docs = {
     description: "실기 평가 50점 · 세부 배점, 증거, 읽기 전용 채점 스크립트",
     file: "mock2027/mock5-task2-marking.md",
   },
+  mock6t1: {
+    title: "2027 지방 모의고사 6회 · 제1과제",
+    description: "난이도 상 · 4시간 · 50점. Private Fargate 작업자로 SQS 작업을 처리하고 보고서 중복을 방지합니다.",
+    file: "mock2027/mock6-task1.md",
+  },
+  mock6t2: {
+    title: "2027 지방 모의고사 6회 · 제2과제",
+    description: "난이도 상 · 4시간 · 50점. S3 버전을 SSM으로 배포하고 검증 실패 보존과 이전 버전 복구를 수행합니다.",
+    file: "mock2027/mock6-task2.md",
+  },
   consoleCli: {
     title: "AWS 콘솔 + CLI 보강 풀이",
     description: "콘솔 화면 예시 이미지와 중간에 필요한 CLI 명령을 함께 정리한 실전 보강 풀이입니다.",
@@ -179,6 +189,30 @@ fetch(encodeURI(selected.file + "?v=20260824-2"), { cache: "no-store" })
     const content = document.getElementById("content");
     content.innerHTML = renderMarkdown(markdown);
     enhanceCodeBlocks(content);
+    const round6Files = {
+      mock6t1: [["input.csv", "정상 CSV"], ["invalid.csv", "오류 CSV"], ["job.json", "작업 메시지 JSON"]],
+      mock6t2: [["site-v1.json", "설정 v1"], ["site-v2.json", "설정 v2"], ["site-invalid.json", "오류 설정"]],
+    };
+    if (round6Files[docKey]) {
+      const task = docKey.slice(-1);
+      const panel = document.createElement("nav");
+      panel.className = "score-submit__download";
+      panel.setAttribute("aria-label", "6회 실습 제공 파일");
+      const title = document.createElement("strong");
+      title.textContent = "실습 제공 파일";
+      const actions = document.createElement("div");
+      actions.className = "score-submit__actions";
+      for (const [filename, label] of round6Files[docKey]) {
+        const link = document.createElement("a");
+        link.className = "score-submit__secondary";
+        link.href = "downloads/mock2027/mock6-task" + task + "/" + filename;
+        link.download = filename;
+        link.textContent = label + " 다운로드";
+        actions.append(link);
+      }
+      panel.append(title, actions);
+      content.prepend(panel);
+    }
     const markingPage = docKey.match(/^mock([45])(t|mark)([12])$/);
     if (markingPage) {
       const [, round, kind, task] = markingPage;

@@ -1,0 +1,5 @@
+{
+  "job_id": "exam-001",
+  "source_key": "inputs/input.csv",
+  "source_version": "REPLACE_WITH_REAL_VERSION_ID"
+}

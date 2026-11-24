@@ -1,0 +1,5 @@
+device,result
+pump-1,PASS
+pump-2,FAIL
+pump-3,PASS
+pump-4,PASS
