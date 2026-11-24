@@ -10,6 +10,19 @@
 
 보충 개정: 2026. 11. 24. · 기존 4시간·50점과 리소스 이름을 유지하고 배포·실패·롤백 시험을 구체화했습니다. 별도 보충 해설은 왼쪽 메뉴의 ‘6회 · 구현·검증 해설’에서 확인합니다.
 
+## 학생용 시작 안내
+
+처음 풀이하는 학생은 상단에서 deploy.py·make_document.py·test_deploy.py를 내려받으세요. deploy.py TODO 2개를 채우고 로컬 확인 후 make_document.py로 SSM 문서 JSON을 생성합니다. 왼쪽 ‘6회 · 학생용 단계별 실습’의 순서대로 검증 → 두 노드 배포 → 실패 보존 → 복원 시험을 진행합니다.
+
+| 구현할 부분 | 요구사항 | 완료 증거 |
+| --- | --- | --- |
+| TODO 1 validate_config | JSON·message 타입·길이·제어문자 검사 | 정상 허용·오류 설정 실패 |
+| TODO 2 commit_config | 완성된 두 파일을 같은 디렉터리 임시 파일로 교체 | 내용·metadata·동일 버전 재실행 |
+| 문서 등록 | make_document.py로 config-deploy.json 생성·등록 | Command 문서 2.2·ENV_VAR 매개변수 |
+| 실제 배포 | Association·Run Command·로그 옵션 | 두 노드 v1→v2→실패 보존→v1 |
+
+시작 코드는 완성된 정답이 아닙니다. TODO가 남으면 CONFIG_DEPLOY_FAILED로 끝납니다. 시험 전 두 EC2에 nginx·Python 3·AWS CLI·SSM Agent를 준비합니다.
+
 ## 1. 무엇을 만드나요?
 
 웹 서버 두 대의 안내 문구를 SSH 없이 변경합니다. 설정 파일은 S3 버전으로 관리하고, Systems Manager가 지정한 버전을 두 서버에 적용합니다. 잘못된 설정이면 기존 웹 페이지를 그대로 유지해야 합니다. 문제가 생겼을 때는 이전 버전으로 되돌립니다.

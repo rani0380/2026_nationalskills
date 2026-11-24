@@ -10,6 +10,18 @@
 
 보충 개정: 2026. 11. 24. · 기존 4시간·50점과 리소스 이름을 유지하고 구현·검증 기준을 명확히 했습니다. 별도 보충 해설은 왼쪽 메뉴의 ‘6회 · 구현·검증 해설’에서 확인합니다.
 
+## 학생용 시작 안내
+
+처음 풀이하는 학생은 상단에서 worker.py·Dockerfile·requirements.txt·test_worker.py를 내려받으세요. worker.py의 TODO 3개를 채우며 데이터 검증 → 보고서 중복 처리 → ECS 배포 순서로 진행합니다. 왼쪽 ‘6회 · 학생용 단계별 실습’에 실행 명령과 중간 확인 기준이 있습니다.
+
+| 구현할 부분 | 요구사항 | 완료 증거 |
+| --- | --- | --- |
+| TODO 1 validate_job | JSON 구조·job_id·원본 키·버전 검사 | 오프라인 정상·오류 입력 확인 |
+| TODO 2 summarize | CSV 크기·헤더·행·값 검사 및 집계 | 정상 4/3/1, 오류 입력 거부 |
+| TODO 3 get_or_create_report | 기존 결과 재사용·조건부 쓰기·412/409·충돌 | 실 AWS 중복·충돌·DB 복구 시험 |
+
+제공된 코드는 메시지 수신과 SDK 연결, DB 기록 후 삭제 순서의 틀입니다. TODO가 남으면 실패하며, 고정 성공값으로 대체하지 않습니다. 오프라인 확인 통과는 실제 AWS 실기 점수를 대신하지 않습니다.
+
 ## 1. 무엇을 만드나요?
 
 여러 점검 결과를 큐로 받아 통계 보고서를 만드는 시스템입니다. 사용자는 S3에 원본 CSV를 올리고 SQS에 작업 메시지를 넣습니다. ECS 컨테이너가 메시지를 읽고 보고서를 만들며, 잘못된 메시지는 재시도 후 실패 큐로 이동합니다.
@@ -82,7 +94,7 @@ Python 또는 자유 언어로 작업자를 작성합니다. Lambda 대신 ECS �
 
 실행 역할은 ECR pull·로그 전송, Task 역할은 원본 큐 ReceiveMessage·DeleteMessage·GetQueueAttributes, 지정 버킷 inputs/* 읽기와 버전 읽기·reports/* 읽기 및 쓰기, 테이블 PutItem·GetItem에 필요한 권한으로 제한합니다. 버전 조회 및 객체 존재 확인에 필요한 버킷 ListBucket은 해당 버킷으로 제한할 수 있습니다. 정적 AWS 키를 넣지 않습니다.
 
-**콘솔 순서**는 IAM 역할 → CloudWatch 로그 그룹 → ECR → CloudShell에서 이미지 빌드·push → ECS Task Definition → 클러스터와 서비스입니다. 앱은 계속 실행되는 작업자이며 HTTP 포트 매핑은 필요하지 않습니다. 언어별 Dockerfile과 앱 코드는 직접 작성합니다.
+**콘솔 순서**는 IAM 역할 → CloudWatch 로그 그룹 → ECR → CloudShell에서 이미지 빌드·push → ECS Task Definition → 클러스터와 서비스입니다. 앱은 계속 실행되는 작업자이며 HTTP 포트 매핑은 필요하지 않습니다. Python 시작 코드는 상단에서 제공하며 TODO를 구현하고 Dockerfile을 확인합니다. 다른 언어를 선택하면 동일 요구사항의 작업자와 Dockerfile을 직접 작성합니다.
 
 ## 6. 실기 검증과 배점
 

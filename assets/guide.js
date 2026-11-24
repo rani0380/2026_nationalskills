@@ -148,6 +148,11 @@ const docs = {
     description: "난이도 상 · 4시간 · 50점. S3 버전을 SSM으로 배포하고 검증 실패 보존과 이전 버전 복구를 수행합니다.",
     file: "mock2027/mock6-task2.md",
   },
+  mock6lab: {
+    title: "2027 지방 모의고사 6회 · 학생용 단계별 실습",
+    description: "시작 코드 TODO, 오프라인 확인, 배포 준비, 중간 통과 기준과 결과 기록 양식입니다.",
+    file: "mock2027/mock6-student-lab.md",
+  },
   mock6solutions: {
     title: "2027 지방 모의고사 6회 · 구현·검증 해설",
     description: "Private 통신·중복 처리·버전 배포·실패 보존·롤백·검증 명령을 정리한 보충 해설입니다.",
@@ -183,7 +188,7 @@ for (const link of document.querySelectorAll("[data-doc-link]")) {
   }
 }
 
-fetch(encodeURI(selected.file + "?v=20261124-mock6-expanded"), { cache: "no-store" })
+fetch(encodeURI(selected.file + "?v=20261124-mock6-starter"), { cache: "no-store" })
   .then((response) => {
     if (!response.ok) {
       throw new Error(`문서를 불러오지 못했습니다. (${response.status})`);
@@ -195,8 +200,8 @@ fetch(encodeURI(selected.file + "?v=20261124-mock6-expanded"), { cache: "no-stor
     content.innerHTML = renderMarkdown(markdown);
     enhanceCodeBlocks(content);
     const round6Files = {
-      mock6t1: [["input.csv", "정상 CSV"], ["invalid.csv", "오류 CSV"], ["job.json", "작업 메시지 JSON"]],
-      mock6t2: [["site-v1.json", "설정 v1"], ["site-v2.json", "설정 v2"], ["site-invalid.json", "오류 설정"]],
+      mock6t1: [["worker.py", "작업자 시작 코드"], ["Dockerfile", "Dockerfile"], ["requirements.txt", "의존성"], ["test_worker.py", "오프라인 확인 문제"], ["input.csv", "정상 CSV"], ["invalid.csv", "오류 CSV"], ["job.json", "작업 메시지 JSON"]],
+      mock6t2: [["deploy.py", "배포 시작 코드"], ["make_document.py", "SSM 문서 생성 도구"], ["test_deploy.py", "오프라인 확인 문제"], ["site-v1.json", "설정 v1"], ["site-v2.json", "설정 v2"], ["site-invalid.json", "오류 설정"]],
     };
     if (round6Files[docKey]) {
       const task = docKey.slice(-1);
@@ -215,7 +220,11 @@ fetch(encodeURI(selected.file + "?v=20261124-mock6-expanded"), { cache: "no-stor
         link.textContent = label + " 다운로드";
         actions.append(link);
       }
-      panel.append(title, actions);
+      const lab = document.createElement("a");
+      lab.className = "score-submit__secondary";
+      lab.href = "guide.html?doc=mock6lab";
+      lab.textContent = "학생용 단계별 실습 열기";
+      panel.append(title, actions, lab);
       content.prepend(panel);
     }
     const markingPage = docKey.match(/^mock([45])(t|mark)([12])$/);
