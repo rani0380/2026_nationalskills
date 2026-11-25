@@ -53,6 +53,127 @@ ____________________________________________________________
 ALB의 80 포트와 앱의 8080 포트가 달라도 되는 이유는?
 ____________________________________________________________
 
+# 그림으로 이해하기 | 전체 구성과 콘솔 지도
+
+![WorldPay 전체 구성도](worksheets/images/worldpay-architecture.png)
+
+## 교사가 설명할 문장
+“학교 정문이 ALB라면 앱은 업무를 처리하는 교무실이고, DB는 별도 보관실입니다. 학생은 보관실에 직접 들어가지 않고 반드시 정해진 입구와 처리 담당을 거칩니다.” 비유를 설명한 뒤 실제 이름 ALB·EC2·Aurora와 포트 80·8080·3307을 다시 짚어 줍니다.
+
+## 콘솔에서 찾아갈 서비스
+상단 검색창에 VPC를 입력하면 네트워크를 설정합니다. EC2에서는 인스턴스·보안 그룹·대상 그룹·로드 밸런서·Auto Scaling을 설정합니다. RDS는 DB, IAM은 역할, KMS는 암호화 키, Secrets Manager는 접속정보, CloudWatch는 로그와 지표를 관리합니다.
+콘솔 언어와 업데이트에 따라 메뉴명이 다를 수 있습니다. 한글 메뉴가 다르면 괄호의 영문 이름과 서비스 검색을 이용합니다.
+
+## 학생 확인 질문
+인터넷 사용자에게 직접 노출되는 구성요소는? ________________
+앱과 DB 사이의 포트는? ______ / Secret을 읽는 포트는? ______
+
+# 콘솔 실습 A | VPC·서브넷 입력칸 따라가기
+
+## VPC 두 개 생성
+1. 상단 검색 VPC → 내 VPC(Your VPCs) → VPC 생성(Create VPC).
+2. 생성할 리소스는 VPC만(VPC only). Name 태그 worldpay-app-vpc, IPv4 CIDR 수동 입력 10.0.0.0/16. 생성합니다.
+3. 동일하게 world-db-vpc와 10.100.0.0/16을 생성합니다. 이 이름은 worldpay-db-vpc가 아님을 다시 확인합니다.
+4. 각 VPC 선택 → 작업(Actions) → VPC 설정 편집에서 DNS 확인과 DNS 호스트 이름을 확인합니다.
+
+## 서브넷 1개를 먼저 정확히 생성
+1. 서브넷(Subnets) → 서브넷 생성(Create subnet).
+2. VPC ID에서 worldpay-app-vpc를 선택합니다.
+3. 이름 worldpay-pub-subnet-a / 가용 영역 ap-northeast-2a / IPv4 서브넷 CIDR 10.0.0.0/24를 입력합니다.
+4. 생성 후 상세 화면에서 VPC·AZ·CIDR을 대조합니다. 나머지 5개는 앞의 공식 서브넷 목록을 보며 같은 방식으로 만듭니다. DB 서브넷 생성 시 VPC 선택을 변경해야 합니다.
+
+## 라우팅 테이블 생성과 연결은 별도 작업
+라우팅 테이블(Route tables) → 생성 → 이름 worldpay-pub-rt와 앱 VPC 선택 → 생성합니다. 이후 서브넷 연결(Subnet associations) → 서브넷 연결 편집(Edit subnet associations) → Public a/c 체크 → 연결 저장(Save associations).
+경로(Routes) → 경로 편집(Edit routes) → 경로 추가(Add route)에서 0.0.0.0/0, 대상 Internet Gateway와 본인 IGW ID를 선택합니다. IGW를 앱 VPC에 먼저 연결해야 합니다.
+
+## 저장 후 확인
+이름만 같은 테이블이 다른 VPC에 생성되지 않았는지 확인합니다. 연결 탭에 Public a/c 두 개가 나타나고 경로 탭에 local과 IGW 기본 경로가 있어야 합니다.
+완료: VPC [ ] / 서브넷 [ ] / 서브넷 연결 [ ] / 경로 저장 [ ]
+
+# 콘솔 실습 B | NAT·피어링·NACL
+
+![목적지별 라우팅 흐름](worksheets/images/worldpay-routes.png)
+
+## NAT와 앱 경로
+VPC → NAT 게이트웨이 → NAT 게이트웨이 생성. Public 서브넷 선택, 연결 유형 Public, Elastic IP 할당 후 생성합니다. Available이 되면 App a/c 라우팅 테이블 각각의 기본 경로 대상을 NAT Gateway로 지정합니다.
+
+## 피어링과 응답 경로
+피어링 연결(Peering connections) → 생성 → 이름 worldpay-vpc-peering, 요청자 앱 VPC, 수락자 DB VPC → 생성. 작업 → 요청 수락 후 Active 확인. 작업의 DNS 설정에서 원격 VPC DNS 확인을 양방향으로 활성화합니다. App a/c 테이블의 DB CIDR과 DB 테이블의 앱 CIDR 경로를 각각 추가합니다.
+
+## NACL의 적용 대상
+네트워크 ACL → ACL 생성 → worldpay-db-nacl / DB VPC. 서브넷 연결 → 연결 편집에서 DB a/c만 체크합니다. 인바운드 규칙 편집과 아웃바운드 규칙 편집을 각각 열어 앞의 3307·임시 포트 규칙을 입력하고 저장합니다.
+학생 설명: “길을 만드는 것은 라우팅, 그 길을 통과시킬지 판단하는 것은 방화벽입니다.”
+
+# 그림으로 이해하기 | DB 방화벽 검사
+
+![DB 요청과 응답의 포트 변화](worksheets/images/worldpay-nacl.png)
+
+## 콘솔의 어떤 칸을 봐야 하나요?
+DB NACL 인바운드 화면의 포트 범위에는 3307을 넣습니다. 소스에는 앱 a의 10.0.10.0/24와 앱 c의 10.0.11.0/24를 서로 다른 규칙으로 넣습니다. 아웃바운드 포트 범위에는 1024-65535, 목적지에는 같은 앱 CIDR을 넣습니다.
+규칙 번호 100과 110은 예시입니다. 이미 더 작은 번호에 거부 규칙이 있으면 허용 규칙까지 도달하지 못할 수 있으므로 전체 규칙을 읽습니다.
+
+## 학생에게 물어보기
+“앱이 45000번을 골라 요청했다면 DB의 응답은 어디로 갈까요?” 학생이 3307이라고 답하면 그림의 화살표 출발지와 목적지를 반대로 읽도록 안내합니다. 정답은 앱의 45000번입니다.
+“DB의 포트를 3307로 바꾸면 인터넷에 공개해도 될까요?” 포트 변경은 접근 통제를 대신하지 않습니다. 비공개 서브넷, SG, NACL은 그대로 필요합니다.
+
+## 보안 그룹 콘솔
+EC2 → 보안 그룹 → DB SG 선택 → 인바운드 규칙 편집 → 사용자 지정 TCP / 3307 / 소스 앱 CIDR 두 개. ALB SG는 HTTP 80, App SG는 사용자 지정 TCP 8080의 소스를 ALB SG로 선택합니다.
+기록: DB NACL 연결 서브넷 ______ / App SG의 소스 ______
+
+# 콘솔 실습 C | DB·암호화·Secret 입력
+
+## Aurora 생성 화면에서 놓치기 쉬운 칸
+RDS → 데이터베이스 → 데이터베이스 생성 → 표준 생성. Aurora MySQL 호환 엔진과 요구 버전을 확인합니다. 설정 영역에서 클러스터 식별자 worldpay-rds, 인스턴스 구성에서 db.t3.medium을 선택합니다. 계정·리전에서 선택되지 않는 조합은 교사에게 차이를 기록합니다.
+연결(Connectivity)에서 DB VPC, DB 서브넷 그룹, DB SG를 선택합니다. 퍼블릭 액세스 No, DB 포트 3307을 확인합니다. 추가 구성에서 암호화와 KMS 키를 확인하고 생성합니다. 완료 후 Writer endpoint를 기록하고 앞의 SQL 실습을 진행합니다.
+
+## 고객 관리형 KMS 키
+KMS → 고객 관리형 키(Customer managed keys) → 키 생성. 대칭(Symmetric), 암호화 및 복호화(Encrypt and decrypt) 용도를 선택합니다. 별칭은 학습용으로 식별하기 쉽게 정합니다. 키 관리자와 키 사용자를 구분하고 앱 역할이 복호화할 수 있는지 확인합니다. 키 별칭은 공식 고정값이 아닙니다.
+
+## Secrets Manager에 접속정보 저장
+1. Secrets Manager → 새 보안 암호 저장(Store a new secret).
+2. 학습용으로 기타 보안 암호 유형(Other type of secret)을 선택하고 Key/value에 username, password, host를 입력합니다.
+3. username은 app처럼 admin이 아닌 DB 사용자, password는 그 사용자의 비밀번호, host는 Writer endpoint입니다.
+4. Encryption key에서 고객 관리형 키를 선택합니다. 이름은 worldpay-secret으로 지정합니다.
+5. 이 과제에서 별도 순환 주기를 요구하지 않으므로 자동 순환을 임의로 필수 설정하지 않습니다. 검토 후 저장합니다.
+6. 저장된 Secret 상세에서 이름과 암호화 키를 확인합니다. 학생 발표 화면에는 비밀번호를 펼치지 않습니다.
+
+## PrivateLink 콘솔 확인
+VPC → 엔드포인트 → 생성 → AWS 서비스 → secretsmanager 검색 → 서울 Interface 서비스 선택 → 앱 VPC와 앱 a/c 선택 → Private DNS 활성 → Endpoint SG 연결 → 생성. Endpoint SG 443의 소스는 App SG로 지정합니다.
+
+# 콘솔 실습 D | ALB 규칙과 ASG 연결
+
+![ALB 허용 규칙과 기본 403 처리](worksheets/images/worldpay-alb-rules.png)
+
+## HTTP 리스너의 기본 응답 변경
+EC2 → 로드 밸런서 → worldpay-alb → 리스너 및 규칙(Listeners and rules) → HTTP:80 선택 → 규칙 관리. 기본 규칙의 동작을 고정 응답(Return fixed response)으로 바꾸고 응답 코드 403을 저장합니다.
+규칙 추가(Add rule)에서 경로 /v1/users와 HTTP 메서드 GET·POST 조건을 함께 지정하고 대상 그룹으로 전달합니다. /health와 GET 규칙을 따로 만듭니다. 우선순위는 중복 없이 지정합니다. 서로 다른 조건 종류는 AND, 같은 조건의 여러 값은 OR로 읽습니다.
+
+## 시작 템플릿에서 ASG까지
+시작 템플릿 생성 → AL2023 / t3.micro / App SG / 앱 IAM 프로파일 확인. Auto Scaling 그룹 생성 → worldpay-asg → 해당 템플릿·버전 → App a/c → 기존 로드 밸런서 대상 그룹 선택. 원하는 2 / 최소 2 / 최대 학습용 4, Name=worldpay-app 태그 전파를 설정합니다.
+동적 조정 정책(Dynamic scaling policies)에서 대상 추적, 평균 CPU 사용률, 목표 70을 지정합니다. 생성 후 활동 기록(Activity)에서 실패 이유를 확인하고 대상 그룹에서 Healthy 상태를 확인합니다.
+
+# 콘솔 실습 E | 로그·대시보드와 수업 진행
+
+## 로그 그룹의 보존 기간
+CloudWatch → 로그 → 로그 그룹 → 생성 → worldpay-log-group. 생성한 그룹의 보존 설정(Retention setting)에서 30일을 선택합니다. 앱 로그 수집 설정 후 로그 스트림을 열고, 최근 요청의 이벤트가 새로 들어오는지 확인합니다.
+
+## 두 개의 대시보드 위젯
+CloudWatch → 대시보드 → 생성 → worldpay-dashboard. 위젯 추가 → 지표 → ApplicationELB에서 본인 ALB의 HTTP_Fixed_Response_Count를 선택합니다. 통계는 학습용 Sum으로 지정합니다.
+두 번째는 EC2 → AutoScalingGroupName 차원 → worldpay-asg의 CPUUtilization, 통계 Average입니다. 현재 인스턴스의 모니터링·지표 가용 여부를 확인합니다. 단일 InstanceId만 선택한 위젯과 구분합니다.
+
+## 교사용 설명 순서
+5분: 전체 구성도에서 입구·앱·DB 역할을 말하게 합니다.
+10분: 라우팅 그림에서 목적지별 화살표를 학생이 고르게 합니다.
+10분: NACL 그림의 요청·응답 포트를 빈 종이에 다시 쓰게 합니다.
+15분: 콘솔에서 리소스 1개를 교사가 시연하고 학생이 동일한 설정을 확인합니다.
+10분: ALB 그림에서 정상·비정상 요청을 분류한 뒤 자기점검표로 확인합니다. 시간은 수업용 예시입니다.
+
+## 콘솔 절차 확인에 사용한 AWS 공식 문서
+라우팅 연결: https://docs.aws.amazon.com/vpc/latest/userguide/create-vpc-route-table.html
+ALB 규칙: https://docs.aws.amazon.com/elasticloadbalancing/latest/application/add-rule.html
+Secret 생성: https://docs.aws.amazon.com/secretsmanager/latest/userguide/create_secret.html
+학습 그림은 공식 AWS 아이콘이나 실제 콘솔 화면을 복제한 것이 아니라 수업용으로 직접 작성한 개념도입니다.
+
 # 1단계 | VPC와 서브넷 만들기
 
 ## 콘솔 작업
