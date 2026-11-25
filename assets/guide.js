@@ -148,6 +148,11 @@ const docs = {
     description: "난이도 상 · 4시간 · 50점. S3 버전을 SSM으로 배포하고 검증 실패 보존과 이전 버전 복구를 수행합니다.",
     file: "mock2027/mock6-task2.md",
   },
+  mock6mark2: {
+    title: "2027 지방 모의고사 6회 · 제2과제 채점기준표",
+    description: "실기 평가 50점 · 세부 배점, 감점 기준, 노드 증거 수집, 읽기 전용 채점 스크립트",
+    file: "mock2027/mock6-task2-marking.md",
+  },
   mock6lab: {
     title: "2027 지방 모의고사 6회 · 학생용 단계별 실습",
     description: "시작 코드 TODO, 오프라인 확인, 배포 준비, 중간 통과 기준과 결과 기록 양식입니다.",
@@ -188,7 +193,7 @@ for (const link of document.querySelectorAll("[data-doc-link]")) {
   }
 }
 
-fetch(encodeURI(selected.file + "?v=20261124-mock6-starter"), { cache: "no-store" })
+fetch(encodeURI(selected.file + "?v=20261125-mock6t2-reinforce"), { cache: "no-store" })
   .then((response) => {
     if (!response.ok) {
       throw new Error(`문서를 불러오지 못했습니다. (${response.status})`);
@@ -201,7 +206,7 @@ fetch(encodeURI(selected.file + "?v=20261124-mock6-starter"), { cache: "no-store
     enhanceCodeBlocks(content);
     const round6Files = {
       mock6t1: [["worker.py", "작업자 시작 코드"], ["Dockerfile", "Dockerfile"], ["requirements.txt", "의존성"], ["test_worker.py", "오프라인 확인 문제"], ["input.csv", "정상 CSV"], ["invalid.csv", "오류 CSV"], ["job.json", "작업 메시지 JSON"]],
-      mock6t2: [["deploy.py", "배포 시작 코드"], ["make_document.py", "SSM 문서 생성 도구"], ["test_deploy.py", "오프라인 확인 문제"], ["site-v1.json", "설정 v1"], ["site-v2.json", "설정 v2"], ["site-invalid.json", "오류 설정"]],
+      mock6t2: [["deploy.py", "배포 시작 코드"], ["make_document.py", "SSM 문서 생성 도구"], ["test_deploy.py", "오프라인 확인 문제"], ["site-v1.json", "설정 v1"], ["site-v2.json", "설정 v2"], ["site-invalid.json", "오류 설정"], ["site-blank.json", "오류: 공백"], ["site-control.json", "오류: 제어문자"], ["site-toolong.json", "오류: 81자"], ["site-array.json", "오류: 배열"], ["site-oversize.json", "오류: 64KiB 초과"]],
     };
     if (round6Files[docKey]) {
       const task = docKey.slice(-1);
@@ -227,7 +232,8 @@ fetch(encodeURI(selected.file + "?v=20261124-mock6-starter"), { cache: "no-store
       panel.append(title, actions, lab);
       content.prepend(panel);
     }
-    const markingPage = docKey.match(/^mock([45])(t|mark)([12])$/);
+    const markingMatch = docKey.match(/^mock([456])(t|mark)([12])$/);
+    const markingPage = markingMatch && docs["mock" + markingMatch[1] + "mark" + markingMatch[3]] ? markingMatch : null;
     if (markingPage) {
       const [, round, kind, task] = markingPage;
       const panel = document.createElement("nav");
@@ -278,6 +284,14 @@ fetch(encodeURI(selected.file + "?v=20261124-mock6-starter"), { cache: "no-store
   });
 
 const mockExams = {
+  mock6t2: {
+    taskName: "2027모의6회_제2과제",
+    script: "mock6-2_mark.sh",
+    place: "서울 리전 CloudShell",
+    run: "bash ~/mock6-2_mark.sh <비번호>\n# 교사 평가 후 입력 예시 (영역 상한 10,8,12,14,6)\n# bash ~/mock6-2_mark.sh <비번호> 9,7,10,12,5",
+    manual: true,
+    practicalExam: { round: "6", task: "2" },
+  },
   mock5t1: {
     taskName: "2027모의5회_제1과제",
     script: "mock5-1_mark.sh",
@@ -550,7 +564,7 @@ ${escapeHtml(mock.run)}</code></pre>`;
 }
 
 function validatePracticalExamResult(output, { round, task }, studentNo) {
-  const heading = output.match(/^2027 지방 모의고사 ([45])회 제([12])과제 \| 비번호: (\d{1,12})[ \t]*\r?$/m);
+  const heading = output.match(/^2027 지방 모의고사 ([456])회 제([12])과제 \| 비번호: (\d{1,12})[ \t]*\r?$/m);
   if (!heading || heading[1] !== round || heading[2] !== task || (round === "4" && heading[3].length > 6)) {
     return "이 페이지와 같은 과제의 채점 스크립트 전체 출력을 붙여넣으세요.";
   }

@@ -208,6 +208,36 @@ aws ssm list-command-invocations --command-id "$COMMAND_ID" --details
 | 실패인데 Success | 예외 후 exit 0·종료 코드 유실 |
 | 경보 없음 | 출력 옵션·EC2 로그 권한·필터·namespace/name |
 
+## 8-1. 2차 보강 시험 명령 (문제지 12~14절)
+
+주입·다른 버킷 시험은 Run Command로만 보냅니다. allowedPattern 거부는 send-command 자체가 InvalidParameters 오류로 실패하는 것이 정상입니다.
+
+```bash
+# 셸 주입: 명령 단계에서 거부 또는 두 노드 Failed가 정상
+aws ssm send-command --document-name config-deploy --targets Key=tag:Role,Values=web \
+  --parameters "BucketName=$CONFIG_BUCKET,VersionId=x;touch /tmp/configlab-pwned" || echo "거부됨(정상)"
+
+# 다른 버킷: 이름 규칙은 맞지만 역할 권한 밖 → Failed·두 파일 보존
+OTHER="config-store-$ACCOUNT_ID-999999"
+COMMAND_ID=$(aws ssm send-command --document-name config-deploy --targets Key=tag:Role,Values=web \
+  --parameters "BucketName=$OTHER,VersionId=$V1" \
+  --cloud-watch-output-config 'CloudWatchOutputEnabled=true,CloudWatchLogGroupName=/config-lab/commands' \
+  --query Command.CommandId --output text)
+aws ssm list-command-invocations --command-id "$COMMAND_ID" --query 'CommandInvocations[].{Node:InstanceId,Status:Status}'
+
+# 노드별 HTTP 실패: config-web-2 하나만 nginx 중지
+WEB2=$(aws ec2 describe-instances --filters Name=tag:Name,Values=config-web-2 Name=instance-state-name,Values=running \
+  --query 'Reservations[0].Instances[0].InstanceId' --output text)
+aws ssm send-command --document-name AWS-RunShellScript --instance-ids "$WEB2" \
+  --parameters 'commands=["systemctl stop nginx"]'
+# → v1 Run Command 후 web-1 Success / web-2 Failed 확인, 이어서 "systemctl start nginx" 후 v1 재실행
+
+# 드리프트 복구: association 즉시 실행
+aws ssm start-associations-once --association-ids "$ASSOCIATION_ID"
+```
+
+크기 검사를 message 검사보다 먼저 해야 site-oversize.json(정상 message + 64KiB 초과)을 거부합니다. `raw.decode("utf-8")` 실패(UnicodeDecodeError)도 ValueError의 하위 클래스이므로 그대로 실패로 처리됩니다.
+
 ## 9. 채점 확인
 
 제1과제는 10+10+16+8+6=50점, 제2과제는 10+8+12+14+6=50점입니다. 기존 부분점수를 유지합니다. 코드 모양만으로 동작 점수를 인정하지 않고 보고서·정확한 key의 버전 수·DB·두 노드 hash·실패 로그·경보 이력을 확인합니다.

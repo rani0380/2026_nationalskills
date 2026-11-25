@@ -171,6 +171,14 @@ cat /var/lib/config-lab/deployment.json
 sha256sum /usr/share/nginx/html/index.html /var/lib/config-lab/deployment.json
 ```
 
+### 10-1. 2차 보강 시험 (문제지 12~14절)
+
+1. 로컬에서 `python3 -m unittest test_deploy -v`를 실행해 test_provided_files·test_more_invalid_messages가 통과하는지 먼저 확인합니다. 오류 파일 6개를 모두 같은 폴더에 내려받아야 합니다.
+2. 교사가 지정한 오류 파일을 config/site.json에 올려 실패 시험을 반복합니다. 지정 파일은 당일 공개됩니다.
+3. Run Command로 VersionId `x;touch /tmp/configlab-pwned`와 `$(id)`를 보내 거부되는지, 두 노드에 파일이 생기지 않았는지 확인합니다.
+4. config-web-2의 nginx만 중지하고 v1을 실행해 노드별 Success/Failed가 갈리는지 확인한 뒤 nginx를 다시 시작합니다.
+5. 한 노드 index.html을 변경하고 association 즉시 실행으로 복구되는지 확인합니다. 마지막에 association이 v1인지 확인합니다.
+
 ## 11. 학생 결과 기록 양식
 
 | 시험 ID | 실행 시각 | 입력 key·VersionId·job_id | 기대 결과 | 실제 결과 | 증거 파일 | 재시도 원인 |

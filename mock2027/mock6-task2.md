@@ -8,7 +8,9 @@
 | 채점 | 교사 실기 평가 50점 |
 | 출제 구분 | 자체 제작 연습문제. 제1과제와 독립적으로 응시 |
 
-보충 개정: 2026. 11. 24. · 기존 4시간·50점과 리소스 이름을 유지하고 배포·실패·롤백 시험을 구체화했습니다. 별도 보충 해설은 왼쪽 메뉴의 ‘6회 · 구현·검증 해설’에서 확인합니다.
+보충 개정: 2026. 11. 24. · 기존 4시간·50점과 리소스 이름을 유지하고 배포·실패·롤백 시험을 구체화했습니다.
+
+2차 보강: 2026. 11. 25. · 12~14절에 교사 지정 오류 설정, 매개변수 주입·권한 밖 버킷, 노드별 HTTP 실패, 드리프트 복구 시험을 추가했습니다. 배점·리소스 이름은 그대로이며 추가 시험은 기존 영역 안에서 판정합니다. 교사용 채점기준표·읽기 전용 스크립트는 왼쪽 메뉴의 ‘6회 · 제2과제 채점기준표’에 있습니다. 별도 보충 해설은 왼쪽 메뉴의 ‘6회 · 구현·검증 해설’에서 확인합니다.
 
 ## 학생용 시작 안내
 
@@ -203,6 +205,48 @@ Task Role이 아니라 EC2 instance role에 로그 권한을 줍니다. 그룹�
 50점 배점은 기존 표를 유지합니다. 실패를 출력했더라도 현재 페이지나 배포 정보가 바뀌면 ‘실패 보존’ 점수를 인정하지 않습니다. v1/v2 문자열을 코드에 고정해 출력하는 방식도 실제 버전 읽기 점수를 인정하지 않습니다.
 
 제출물은 Document JSON/YAML, 역할의 신뢰·권한 정책, 버전 목록, Association 설정·실행 이력, 노드별 HTTP·배포 정보·hash, CloudWatch 실패 로그·경보 전이입니다. 배포 정보에 VersionId가 빠지면 화면 문구만으로 복구 성공을 판정하지 않습니다.
+
+## 12. 2차 보강: 교사 지정 오류 설정
+
+문구를 코드에 고정하거나 invalid 한 가지만 대비한 풀이를 구별하기 위해, 교사가 아래 오류 파일 중 **한 개를 시험 당일 지정**합니다. 학생은 지정 파일을 같은 config/site.json 키에 올리고 VersionId를 기록한 뒤 실패 시험을 수행합니다. 모든 오류 파일은 상단 ‘실습 제공 파일’에서 내려받습니다.
+
+| 파일 | 내용 | 기대 오류 |
+| --- | --- | --- |
+| site-invalid.json | message가 빈 문자열 | INVALID_MESSAGE |
+| site-blank.json | message가 공백 3칸 | strip 후 0자 → INVALID_MESSAGE |
+| site-control.json | message 안에 BEL(\u0007) 제어문자 | INVALID_MESSAGE |
+| site-toolong.json | message 81자 | 1~80자 위반 |
+| site-array.json | 최상위가 JSON 배열 | 객체 아님 |
+| site-oversize.json | 정상 message + padding 필드, 전체 64KiB 초과 | INVALID_SIZE. message가 정상이어도 실패 |
+
+판정은 기존 10절과 같습니다. 두 노드 모두 Failed·nonzero, stdout에 CONFIG_DEPLOY_FAILED, 시험 전후 index.html·deployment.json SHA-256 동일이어야 합니다. 지정 파일 외에 site-invalid.json만 통과하는 풀이는 ‘Document 검증’ 점수를 부분 인정합니다.
+
+다른 필드를 무시해도 되지만 **크기 검사는 message 검사보다 먼저** 합니다. site-oversize.json처럼 message가 정상인 큰 파일을 적용하면 실패입니다.
+
+## 13. 2차 보강: 매개변수 주입과 권한 범위
+
+| 시험 | 입력 | 기대 결과 | 반영 영역 |
+| --- | --- | --- | --- |
+| 셸 주입 | VersionId에 `x;touch /tmp/configlab-pwned` | send-command 단계에서 allowedPattern 거부 또는 Failed. 두 노드에 /tmp/configlab-pwned 없음 | Document 매개변수 처리 |
+| 명령 치환 | VersionId에 `$(id)` | 위와 같음. stdout에 id 결과가 나오면 0점 | Document 매개변수 처리 |
+| 다른 버킷 | BucketName에 같은 패턴의 다른 버킷 이름(비번호만 다름, 존재하지 않아도 됨) | 역할이 지정 객체만 허용하므로 AccessDenied → Failed, 두 파일 보존 | 저장소·권한 |
+| 다른 키 | 같은 버킷의 config/other.json 버전 | Document가 key를 고정하므로 지정 VersionId가 config/site.json에 없어 Failed | Document 버전 지정 읽기 |
+
+Document의 allowedPattern은 1차 방어이고, 스크립트 안의 검사는 2차 방어입니다. allowedPattern을 제거하고 ENV_VAR만 사용한 경우에도 위 입력이 셸 명령으로 실행되면 안 됩니다. 주입 시험은 Run Command로만 수행하고 association 매개변수에는 넣지 않습니다.
+
+## 14. 2차 보강: 노드별 실패 판정과 드리프트 복구
+
+| 순서 | 조작 | 기대 결과 |
+| --- | --- | --- |
+| 1 | v2 적용 상태에서 config-web-2만 `systemctl stop nginx` (Run Command, 대상 인스턴스 1개) | - |
+| 2 | v1 VersionId로 두 노드 Run Command | config-web-1 Success, config-web-2 Failed·CONFIG_DEPLOY_FAILED. 상위 명령 상태가 Success여도 두 노드 성공으로 인정하지 않음 |
+| 3 | config-web-2에서 `systemctl start nginx` 후 같은 v1 재실행 | 두 노드 Success, Welcome v1, 내용 중복 없음 |
+| 4 | config-web-1의 index.html을 Run Command로 `Tampered`로 변경 | 드리프트 발생 |
+| 5 | association 즉시 실행(start-associations-once) | 두 노드가 association의 VersionId 문구와 배포 정보로 복원 |
+
+2단계에서 HTTP 확인 실패 노드는 파일이 이미 교체되었을 수 있습니다. 이 과제는 HTTP 실패 후 자동 되돌림을 요구하지 않지만 **성공으로 끝내면 안 됩니다**. 3단계 재실행으로 정상화되는지 확인합니다. 드리프트 복구는 Association이 목표 버전을 유지하는 이유를 확인하는 시험이며, 30분 스케줄을 기다리지 않고 즉시 실행으로 확인합니다.
+
+모든 보강 시험이 끝나면 association의 VersionId를 v1으로 두고 즉시 실행하여 두 노드가 v1인지 마지막으로 확인합니다. 시험 중 중지한 nginx는 반드시 다시 시작합니다.
 
 ## 보충 참고
 

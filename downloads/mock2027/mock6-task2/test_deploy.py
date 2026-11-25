@@ -22,6 +22,30 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             deploy.validate_config(b"x"*65537)
 
+    def test_provided_files(self):
+        """2차 보강: 상단 제공 파일 전체. 정상 2개는 허용, 오류 파일은 모두 ValueError."""
+        here = Path(__file__).resolve().parent
+        expected = {"site-v1.json": "Welcome v1", "site-v2.json": "Welcome v2"}
+        bad = ["site-invalid.json", "site-blank.json", "site-control.json",
+               "site-toolong.json", "site-array.json", "site-oversize.json"]
+        for name, message in expected.items():
+            with self.subTest(file=name):
+                self.assertEqual(deploy.validate_config((here / name).read_bytes()), message)
+        for name in bad:
+            path = here / name
+            if not path.exists():
+                self.skipTest(name + " 파일을 같은 폴더에 내려받으세요.")
+            with self.subTest(file=name):
+                with self.assertRaises(ValueError):
+                    deploy.validate_config(path.read_bytes()[:65537])
+
+    def test_more_invalid_messages(self):
+        for raw in [b'{"message":"   "}', b'{"message":"a\\u0007b"}', b'{"message":"a\\tb"}',
+                    b'{"message":null}', b'"Welcome"', b'\xff\xfe']:
+            with self.subTest(raw=raw):
+                with self.assertRaises(ValueError):
+                    deploy.validate_config(raw)
+
     def test_two_files(self):
         with tempfile.TemporaryDirectory() as work:
             root=Path(work)
