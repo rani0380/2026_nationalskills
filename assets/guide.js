@@ -1,7 +1,7 @@
 const docs = {
   local2026t1worksheet: {
     title: "2026 지방대회 제1과제 · 학생용 학습자료",
-    description: "WorldPay · 콘솔 설정, 개념 설명, 검증 절차와 공식 50점 자기점검표 · A4 14쪽 인쇄용 PDF",
+    description: "WorldPay · 콘솔 설정, 개념 설명, 검증 절차와 공식 50점 자기점검표 · A4 22쪽 인쇄용 PDF",
     file: "worksheets/2026-local-task1-student.md",
   },
   solution: {
@@ -245,7 +245,7 @@ fetch(encodeURI(selected.file + "?v=20261125-mock6t2-reinforce"), { cache: "no-s
       link.className = "score-submit__secondary";
       link.href = "downloads/worksheets/2026-local-task1-student.pdf";
       link.download = "2026-local-task1-student.pdf";
-      link.textContent = "A4 14쪽 학습자료 PDF 다운로드";
+      link.textContent = "A4 22쪽 학습자료 PDF 다운로드";
       const note = document.createElement("p");
       note.textContent = "A4 세로, 실제 크기 또는 페이지에 맞춤으로 인쇄하세요. 단계별 설정값과 결과를 직접 기록할 수 있습니다.";
       panel.append(link, note);
