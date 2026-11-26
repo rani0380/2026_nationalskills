@@ -1,4 +1,9 @@
 const docs = {
+  local2026t1solutions: {
+    title: "2026 지방대회 제1과제 · WorldPay 풀이 해설서",
+    description: "실제 시행자료 기준 · 구축 순서, 설정 이유, 보안 그룹 정답표, SQL·IAM 예시, 검증과 오류 해결 · 인쇄용 A4 20쪽",
+    file: "worksheets/2026-local-task1-solutions.md",
+  },
   local2026resources: {
     title: "2026 지방대회 제1과제 · 전체 리소스 작업표",
     description: "보안 그룹 인바운드·아웃바운드부터 VPC·라우팅·DB·ALB·ASG·IAM·로그까지 콘솔 입력값을 정리한 A4 10쪽 작업표입니다.",
@@ -264,11 +269,13 @@ fetch(encodeURI(selected.file + "?v=20261125-mock6t2-reinforce"), { cache: "no-s
       panel.append(link, note);
       content.prepend(panel);
     }
-    if (["local2026resources", "local2026t1worksheet"].includes(docKey)) {
+    if (["local2026resources", "local2026t1worksheet", "local2026t1solutions"].includes(docKey)) {
       const panel = document.createElement("nav");
       panel.className = "score-submit__download";
       panel.setAttribute("aria-label", "전체 리소스 작업표");
       const links = [
+        ["guide.html?doc=local2026t1solutions", "제1과제 풀이 해설서 열기", false],
+        ["downloads/worksheets/2026-local-task1-solutions.pdf", "풀이 해설서 PDF · A4 20쪽", true],
         ["guide.html?doc=local2026resources", "전체 리소스 작업표 열기", false],
         ["downloads/worksheets/2026-local-task1-resources.pdf", "작업표 PDF 다운로드 · A4 10쪽", true],
         ["guide.html?doc=local2026t1worksheet", "상세 설명 학습자료 열기", false]
@@ -278,11 +285,11 @@ fetch(encodeURI(selected.file + "?v=20261125-mock6t2-reinforce"), { cache: "no-s
         link.className = "score-submit__secondary";
         link.href = href;
         link.textContent = label;
-        if (download) link.download = "2026-local-task1-resources.pdf";
+        if (download) link.download = href.split("/").pop();
         panel.append(link);
       }
       const note = document.createElement("p");
-      note.textContent = "보안 그룹 인바운드는 3쪽, 아웃바운드는 4쪽입니다. 공식 고정값과 수업용 예시를 구분해서 확인하세요.";
+      note.textContent = "전체 리소스 작업표에서 보안 그룹 인바운드는 3쪽, 아웃바운드는 4쪽입니다. 공식 고정값과 수업용 예시를 구분해서 확인하세요.";
       panel.append(note);
       content.prepend(panel);
     }
